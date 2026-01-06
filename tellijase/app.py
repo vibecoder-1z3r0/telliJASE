@@ -166,6 +166,12 @@ class MainWindow(QMainWindow):
     def _initialize_jam_controls(self) -> None:
         for control in self.channel_controls:
             control.emit_state()
+        if not self.audio_player.available:
+            self.btn_play.setEnabled(False)
+            self.btn_stop.setEnabled(False)
+            self.jam_status_label.setText(
+                "Audio preview unavailable (QtMultimedia/GStreamer missing)."
+            )
 
     def _make_action(self, text: str, shortcut: str, handler) -> "QAction":
         action = self.addAction(text)
@@ -259,9 +265,17 @@ class MainWindow(QMainWindow):
         self.jam_status_label.setText("Registers updated.")
 
     def _on_play_audio(self) -> None:
+        if not self.audio_player.available:
+            QMessageBox.warning(
+                self,
+                "Audio Unavailable",
+                "QtMultimedia dependencies (GStreamer) are missing. "
+                "Install libgstreamer/libgstpbutils to enable JAM playback.",
+            )
+            return
         registers = self.shadow_state.snapshot()
-        self.audio_player.play(registers)
-        self.statusBar().showMessage("Playing JAM preview…", 2000)
+        if self.audio_player.play(registers):
+            self.statusBar().showMessage("Playing JAM preview…", 2000)
 
     def _on_stop_audio(self) -> None:
         self.audio_player.stop()

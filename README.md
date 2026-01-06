@@ -18,3 +18,4 @@ telliJASE is dual-licensed:
   pip install -r requirements-dev.txt
   python -m pytest
   ```
+- Optional JAM audio preview relies on QtMultimedia + GStreamer. If `QtMultimedia` cannot load (missing `libgstpbutils-1.0.so.0`, etc.), the UI disables audio and shows guidance; install the system GStreamer runtime to enable playback.
