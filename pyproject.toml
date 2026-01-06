@@ -1,0 +1,43 @@
+[project]
+name = "tellijase"
+version = "0.1.0"
+description = "Just A Sound Editor for the Intellivision AY-3-8914 PSG"
+readme = "README.md"
+authors = [
+    { name = "Andrew Potozniak", email = "vibecoder.1.z3r0@gmail.com" }
+]
+license = { text = "MIT OR VCL-0.1-Experimental" }
+requires-python = ">=3.8"
+dependencies = [
+    "PySide6>=6.2.4,<6.3",
+    "numpy>=1.24.4,<1.25"
+]
+
+[project.optional-dependencies]
+dev = [
+    "pytest>=8.0",
+    "pytest-cov>=4.1",
+    "black>=24.3",
+    "isort>=5.13",
+    "mypy>=1.8"
+]
+
+[build-system]
+requires = ["hatchling>=1.21"]
+build-backend = "hatchling.build"
+
+[tool.black]
+line-length = 100
+target-version = ["py311"]
+
+[tool.isort]
+profile = "black"
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+addopts = "-q"
+
+[tool.mypy]
+python_version = "3.11"
+warn_unused_configs = true
+packages = ["tellijase"]
