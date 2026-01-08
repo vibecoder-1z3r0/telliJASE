@@ -183,7 +183,7 @@ test_shadow_state.py ..          ✅ Old shadow state
 
 1. **Launch app:**
    ```bash
-   python -m tellijase.app
+   python -m tellijase
    ```
 
 2. **If audio unavailable:**
