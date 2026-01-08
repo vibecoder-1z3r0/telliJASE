@@ -2,16 +2,18 @@
 
 from __future__ import annotations
 
+import logging
 import sys
 from datetime import datetime
 from pathlib import Path
 from typing import Optional
 
-from PySide6.QtCore import Qt
+from PySide6.QtCore import Qt, QTimer
 from PySide6.QtGui import QAction
 from PySide6.QtWidgets import (
     QApplication,
     QFileDialog,
+    QHBoxLayout,
     QLabel,
     QMainWindow,
     QMenu,
@@ -23,13 +25,14 @@ from PySide6.QtWidgets import (
     QToolBar,
     QVBoxLayout,
     QWidget,
-    QHBoxLayout,
 )
 
-from tellijase.audio.player import JamAudioPlayer
-from tellijase.psg import ShadowState
+from tellijase.audio.stream import LivePSGStream, SOUNDDEVICE_AVAILABLE
+from tellijase.models import JAMSnapshot, PSGState
 from tellijase.storage import JamSession, Project, load_project, new_project, save_project
 from tellijase.ui.jam_controls import ChannelControl
+
+logger = logging.getLogger(__name__)
 
 
 class MainWindow(QMainWindow):
@@ -37,12 +40,27 @@ class MainWindow(QMainWindow):
 
     def __init__(self) -> None:
         super().__init__()
+
+        # Models (domain layer - pure data)
         self.project: Project = new_project()
-        self.shadow_state = ShadowState()
-        self.shadow_state.update(R7=0)  # enable tone on all channels by default
+        self.current_state = PSGState()  # Live JAM state
         self.current_file: Optional[Path] = None
+
+        # UI widgets
         self.channel_controls: list[ChannelControl] = []
-        self.audio_player = JamAudioPlayer(self)
+
+        # Audio
+        self.audio_stream: Optional[LivePSGStream] = None
+        self.audio_available = SOUNDDEVICE_AVAILABLE
+
+        if self.audio_available:
+            try:
+                self.audio_stream = LivePSGStream(self.current_state)
+                logger.info("Audio stream initialized")
+            except Exception as e:
+                logger.error(f"Failed to initialize audio: {e}")
+                self.audio_available = False
+                self.audio_stream = None
 
         self.setMinimumSize(1280, 768)
         self.resize(1600, 900)
@@ -55,6 +73,10 @@ class MainWindow(QMainWindow):
         self._connect_signals()
         self._update_title()
         self._initialize_jam_controls()
+
+        # Check audio availability after UI is ready
+        if not self.audio_available:
+            QTimer.singleShot(100, self._warn_audio_missing)
 
     # UI Construction -------------------------------------------------
     def _create_actions(self) -> None:
@@ -156,22 +178,48 @@ class MainWindow(QMainWindow):
         return widget
 
     def _connect_signals(self) -> None:
+        """Connect UI signals to model updates - clean model-view separation."""
         self.btn_new_session.clicked.connect(self._on_new_session)
         self.btn_snapshot.clicked.connect(self._on_snapshot)
         self.btn_play.clicked.connect(self._on_play_audio)
         self.btn_stop.clicked.connect(self._on_stop_audio)
-        for control in self.channel_controls:
-            control.params_changed.connect(self._on_channel_params_changed)
+
+        # Connect high-level channel signals to model updates
+        for idx, control in enumerate(self.channel_controls):
+            # Get the channel model
+            if idx == 0:
+                channel = self.current_state.channel_a
+            elif idx == 1:
+                channel = self.current_state.channel_b
+            else:
+                channel = self.current_state.channel_c
+
+            # Wire signals to model (direct field assignment)
+            control.frequency_changed.connect(
+                lambda freq, ch=channel: setattr(ch, "frequency", freq)
+            )
+            control.volume_changed.connect(
+                lambda vol, ch=channel: setattr(ch, "volume", vol)
+            )
+            control.tone_enabled_changed.connect(
+                lambda enabled, ch=channel: setattr(ch, "tone_enabled", enabled)
+            )
+            control.noise_enabled_changed.connect(
+                lambda enabled, ch=channel: setattr(ch, "noise_enabled", enabled)
+            )
 
     def _initialize_jam_controls(self) -> None:
+        """Initialize JAM controls with current model state."""
         for control in self.channel_controls:
             control.emit_state()
-        if not self.audio_player.available:
+
+        if not self.audio_available:
             self.btn_play.setEnabled(False)
             self.btn_stop.setEnabled(False)
             self.jam_status_label.setText(
-                "Audio preview unavailable (QtMultimedia/GStreamer missing)."
+                "⚠️ Audio unavailable (sounddevice not installed)"
             )
+            self.jam_status_label.setStyleSheet("color: orange; font-weight: bold;")
 
     def _make_action(self, text: str, shortcut: str, handler) -> "QAction":
         action = self.addAction(text)
@@ -181,15 +229,16 @@ class MainWindow(QMainWindow):
 
     # File Handling ---------------------------------------------------
     def new_project(self) -> None:
+        """Create a new project with default PSG state."""
         self.project = new_project()
         self.current_file = None
-        self.shadow_state = ShadowState()
-        self.shadow_state.update(R7=0)
+        self.current_state = PSGState()  # Fresh state with default values
         self._initialize_jam_controls()
         self.statusBar().showMessage("Created new project", 3000)
         self._update_title()
 
     def open_project(self) -> None:
+        """Open a project file from disk."""
         filename, _ = QFileDialog.getOpenFileName(
             self,
             "Open telliJASE Project",
@@ -201,8 +250,7 @@ class MainWindow(QMainWindow):
         try:
             self.project = load_project(filename)
             self.current_file = Path(filename)
-            self.shadow_state = ShadowState()
-            self.shadow_state.update(R7=0)
+            self.current_state = PSGState()  # Fresh state
             self._initialize_jam_controls()
             self.statusBar().showMessage(f"Opened {filename}", 3000)
             self._update_title()
@@ -238,48 +286,67 @@ class MainWindow(QMainWindow):
         except Exception as exc:  # pragma: no cover - UI popup
             QMessageBox.critical(self, "Save Failed", str(exc))
 
-    # Placeholder Callbacks -------------------------------------------
+    # JAM Mode Callbacks ----------------------------------------------
     def _on_new_session(self) -> None:
+        """Create a new JAM session snapshot."""
         new_id = f"jam-{len(self.project.jam_sessions) + 1}"
         session = JamSession(
             id=new_id,
             name=f"Session {len(self.project.jam_sessions) + 1}",
-            registers=self.shadow_state.snapshot(),
+            registers=self.current_state.to_registers(),
         )
         self.project.jam_sessions.append(session)
         self.project.touch()
         self.statusBar().showMessage(f"Added {session.name}", 3000)
 
     def _on_snapshot(self) -> None:
+        """Save current PSG state to the active session."""
         if not self.project.jam_sessions:
             self._on_new_session()
             return
         session = self.project.jam_sessions[-1]
-        session.registers = self.shadow_state.snapshot()
+        session.registers = self.current_state.to_registers()
         session.updated = datetime.utcnow().isoformat()
         self.project.touch()
         self.statusBar().showMessage(f"Snapshot saved to {session.name}", 3000)
 
-    def _on_channel_params_changed(self, updates: dict[str, int]) -> None:
-        self.shadow_state.update(**updates)
-        self.jam_status_label.setText("Registers updated.")
-
     def _on_play_audio(self) -> None:
-        if not self.audio_player.available:
+        """Start real-time audio playback."""
+        if not self.audio_available:
+            self._warn_audio_missing()
+            return
+
+        if self.audio_stream and self.audio_stream.start():
+            self.btn_play.setEnabled(False)
+            self.btn_stop.setEnabled(True)
+            self.statusBar().showMessage("Playing (move sliders to hear changes)…", 3000)
+        else:
             QMessageBox.warning(
                 self,
-                "Audio Unavailable",
-                "QtMultimedia dependencies (GStreamer) are missing. "
-                "Install libgstreamer/libgstpbutils to enable JAM playback.",
+                "Playback Failed",
+                "Failed to start audio stream. Check console for errors.",
             )
-            return
-        registers = self.shadow_state.snapshot()
-        if self.audio_player.play(registers):
-            self.statusBar().showMessage("Playing JAM preview…", 2000)
 
     def _on_stop_audio(self) -> None:
-        self.audio_player.stop()
-        self.statusBar().showMessage("Playback stopped", 2000)
+        """Stop audio playback."""
+        if self.audio_stream:
+            self.audio_stream.stop()
+            self.btn_play.setEnabled(True)
+            self.btn_stop.setEnabled(False)
+            self.statusBar().showMessage("Playback stopped", 2000)
+
+    def _warn_audio_missing(self) -> None:
+        """Show warning popup when audio is unavailable."""
+        QMessageBox.warning(
+            self,
+            "Audio Unavailable",
+            "telliJASE audio playback is disabled.\n\n"
+            "sounddevice library not found. Install with:\n\n"
+            "  pip install sounddevice\n\n"
+            "On WSL/Linux, you may also need:\n"
+            "  sudo apt-get install libportaudio2\n\n"
+            "You can still edit and save PSG settings without audio preview.",
+        )
 
     def _update_title(self) -> None:
         name = self.project.meta.name or "Untitled"
@@ -291,6 +358,12 @@ class MainWindow(QMainWindow):
 
 def run(app: Optional[QApplication] = None) -> int:
     """Launch the PySide6 event loop."""
+
+    # Configure logging
+    logging.basicConfig(
+        level=logging.INFO,
+        format="[%(levelname)s] %(name)s: %(message)s",
+    )
 
     should_cleanup = False
     if app is None:

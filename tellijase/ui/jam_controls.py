@@ -3,68 +3,107 @@
 from __future__ import annotations
 
 from PySide6.QtCore import Qt, Signal
-from PySide6.QtWidgets import QLabel, QSlider, QVBoxLayout, QGroupBox
-
-from tellijase.psg.utils import frequency_to_period
-
-CHANNEL_REGS = [
-    ("R0", "R1", "R8"),
-    ("R2", "R3", "R9"),
-    ("R4", "R5", "R10"),
-]
+from PySide6.QtWidgets import QCheckBox, QGroupBox, QLabel, QSlider, QVBoxLayout, QWidget
 
 
 class ChannelControl(QGroupBox):
-    params_changed = Signal(dict)
+    """UI for one PSG channel - emits high-level signals.
+
+    Signals emit domain concepts (frequency in Hz, volume 0-15, mixer enables)
+    rather than low-level register values.
+    """
+
+    # High-level signals (domain model, not hardware registers)
+    frequency_changed = Signal(float)
+    volume_changed = Signal(int)
+    tone_enabled_changed = Signal(bool)
+    noise_enabled_changed = Signal(bool)
 
     def __init__(self, channel_index: int, parent: QWidget | None = None) -> None:
         super().__init__(parent)
         self.channel_index = channel_index
-        self.setTitle(f"Channel {chr(ord('A') + channel_index)}")
-        self.freq_slider = QSlider()
-        self.freq_slider.setOrientation(Qt.Horizontal)
-        self.freq_slider.setRange(55, 2000)
-        self.freq_slider.setValue(440 + channel_index * 110)
-        self.freq_slider.valueChanged.connect(self._emit_changes)
-
-        self.freq_label = QLabel()
-        self._update_freq_label(self.freq_slider.value())
-        self.freq_slider.valueChanged.connect(self._update_freq_label)
-
-        self.volume_slider = QSlider()
-        self.volume_slider.setOrientation(Qt.Horizontal)
-        self.volume_slider.setRange(0, 15)
-        self.volume_slider.setValue(12 - channel_index * 2)
-        self.volume_slider.valueChanged.connect(self._emit_changes)
-
-        self.volume_label = QLabel(f"Volume: {self.volume_slider.value()}")
-        self.volume_slider.valueChanged.connect(lambda val: self.volume_label.setText(f"Volume: {val}"))
+        channel_name = chr(ord("A") + channel_index)
+        self.setTitle(f"Channel {channel_name}")
 
         layout = QVBoxLayout(self)
+        layout.setSpacing(8)
+
+        # Frequency slider (27 Hz - 7000 Hz musical range)
+        self.freq_label = QLabel("Frequency: 440 Hz")
+        self.freq_slider = QSlider(Qt.Horizontal)
+        self.freq_slider.setRange(55, 2000)  # Usable musical range
+        self.freq_slider.setValue(440 + channel_index * 110)
+        self.freq_slider.valueChanged.connect(self._on_freq_changed)
         layout.addWidget(self.freq_label)
         layout.addWidget(self.freq_slider)
-        layout.addWidget(self.volume_label)
-        layout.addWidget(self.volume_slider)
+
+        # Volume slider (0-15)
+        self.vol_label = QLabel("Volume: 12")
+        self.vol_slider = QSlider(Qt.Horizontal)
+        self.vol_slider.setRange(0, 15)
+        self.vol_slider.setValue(12 - channel_index * 2)
+        self.vol_slider.valueChanged.connect(self._on_vol_changed)
+        layout.addWidget(self.vol_label)
+        layout.addWidget(self.vol_slider)
+
+        # Mixer checkboxes (R7 control)
+        self.tone_check = QCheckBox("Tone")
+        self.tone_check.setChecked(True)
+        self.tone_check.toggled.connect(self.tone_enabled_changed)
+        layout.addWidget(self.tone_check)
+
+        self.noise_check = QCheckBox("Noise")
+        self.noise_check.setChecked(False)
+        self.noise_check.toggled.connect(self.noise_enabled_changed)
+        layout.addWidget(self.noise_check)
+
         layout.addStretch()
 
-    def _emit_changes(self, _value: int) -> None:
-        fine_reg, coarse_reg, vol_reg = CHANNEL_REGS[self.channel_index]
-        freq = self.freq_slider.value()
-        volume = self.volume_slider.value()
-        period = frequency_to_period(freq)
-        updates = {
-            fine_reg: period & 0xFF,
-            coarse_reg: (period >> 8) & 0x0F,
-            vol_reg: volume,
-        }
-        self.params_changed.emit(updates)
-
-    def _update_freq_label(self, value: int) -> None:
+    def _on_freq_changed(self, value: int) -> None:
+        """Frequency slider moved - emit high-level signal."""
         self.freq_label.setText(f"Frequency: {value} Hz")
+        self.frequency_changed.emit(float(value))
+
+    def _on_vol_changed(self, value: int) -> None:
+        """Volume slider moved - emit high-level signal."""
+        self.vol_label.setText(f"Volume: {value}")
+        self.volume_changed.emit(value)
+
+    def set_state(self, frequency: float, volume: int, tone_enabled: bool, noise_enabled: bool) -> None:
+        """Update UI from model (for loading projects).
+
+        Args:
+            frequency: Frequency in Hz
+            volume: Volume 0-15
+            tone_enabled: Tone mixer enable
+            noise_enabled: Noise mixer enable
+        """
+        # Block signals to avoid feedback loop
+        self.freq_slider.blockSignals(True)
+        self.vol_slider.blockSignals(True)
+        self.tone_check.blockSignals(True)
+        self.noise_check.blockSignals(True)
+
+        self.freq_slider.setValue(int(frequency))
+        self.vol_slider.setValue(volume)
+        self.tone_check.setChecked(tone_enabled)
+        self.noise_check.setChecked(noise_enabled)
+
+        self.freq_slider.blockSignals(False)
+        self.vol_slider.blockSignals(False)
+        self.tone_check.blockSignals(False)
+        self.noise_check.blockSignals(False)
+
+        # Update labels
+        self._on_freq_changed(int(frequency))
+        self._on_vol_changed(volume)
 
     def emit_state(self) -> None:
-        """Force emission of the current slider state."""
-        self._emit_changes(self.freq_slider.value())
+        """Force emission of current UI state (for initialization)."""
+        self.frequency_changed.emit(float(self.freq_slider.value()))
+        self.volume_changed.emit(self.vol_slider.value())
+        self.tone_enabled_changed.emit(self.tone_check.isChecked())
+        self.noise_enabled_changed.emit(self.noise_check.isChecked())
 
 
 __all__ = ["ChannelControl"]
