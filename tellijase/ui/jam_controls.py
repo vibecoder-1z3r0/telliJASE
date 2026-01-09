@@ -140,6 +140,21 @@ class ChannelControl(QGroupBox):
         self.mute_btn = QPushButton("MUTE")
         self.mute_btn.setCheckable(True)
         self.mute_btn.setMaximumWidth(60)
+        self.mute_btn.setStyleSheet("""
+            QPushButton {
+                background-color: palette(button);
+                border: 1px solid palette(mid);
+                padding: 4px;
+            }
+            QPushButton:checked {
+                background-color: #d32f2f;
+                color: white;
+                border: 1px solid #b71c1c;
+            }
+            QPushButton:checked:hover {
+                background-color: #f44336;
+            }
+        """)
         self.mute_btn.toggled.connect(self._on_mute_toggled)
         right_pane.addWidget(self.mute_btn, alignment=Qt.AlignCenter)
 
