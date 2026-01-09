@@ -98,6 +98,8 @@ class ChannelControl(QGroupBox):
         self.vol_slider.setRange(0, 15)
         self.vol_slider.setValue(4)
         self.vol_slider.setMinimumHeight(100)
+        self.vol_slider.setTickPosition(QSlider.TicksBothSides)
+        self.vol_slider.setTickInterval(1)  # Show tick for each volume level (0-15)
         self.vol_slider.valueChanged.connect(self._on_vol_changed)
         right_pane.addWidget(self.vol_slider, alignment=Qt.AlignCenter)
 
