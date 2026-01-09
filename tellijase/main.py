@@ -28,6 +28,7 @@ from PySide6.QtWidgets import (
     QWidget,
 )
 
+from tellijase import __version__
 from tellijase.audio.stream import LivePSGStream, SOUNDDEVICE_AVAILABLE
 from tellijase.audio.pygame_player import PygamePSGPlayer, PYGAME_AVAILABLE
 from tellijase.models import JAMSnapshot, PSGState
@@ -113,6 +114,13 @@ class MainWindow(QMainWindow):
         file_menu.addSeparator()
         file_menu.addAction(self.action_quit)
         menubar.addMenu(file_menu)
+
+        # Help menu
+        help_menu = QMenu("&Help", self)
+        about_action = QAction("&About", self)
+        about_action.triggered.connect(self.show_about)
+        help_menu.addAction(about_action)
+        menubar.addMenu(help_menu)
 
         self.setMenuBar(menubar)
 
@@ -374,6 +382,24 @@ class MainWindow(QMainWindow):
             self._update_title()
         except Exception as exc:  # pragma: no cover - UI popup
             QMessageBox.critical(self, "Save Failed", str(exc))
+
+    def show_about(self) -> None:
+        """Show about dialog."""
+        QMessageBox.about(
+            self,
+            "About telliJASE",
+            f"<h2>telliJASE v{__version__}</h2>"
+            "<p><b>J</b>ust <b>A</b> <b>S</b>ound <b>E</b>ditor for the Intellivision AY-3-8914 PSG</p>"
+            "<p>Create custom music and sound effects using the General Instrument AY-3-8914 "
+            "Programmable Sound Generator chip found in the Intellivision game console</p>"
+            "<p>© 2025-2026 Andrew Potozniak (Tyraziel & 1.z3r0)</p>"
+            "<p>Dual licensed under the <a href='https://opensource.org/licenses/MIT'>MIT License</a> "
+            "and <a href='https://github.com/tyraziel/vibe-coder-license'>VCL-0.1-Experimental</a></p>"
+            "<p><small>Intellivision and Intellivision trademarks are the property of Atari Interactive, Inc. "
+            "This application is built to aid sound programming for the Intellivision. "
+            "This project is not affiliated with or endorsed by Atari Interactive, Inc.</small></p>"
+            "<p><i><a href='https://aiattribution.github.io/statements/AIA-PAI-Nc-Hin-R-?model=Claude%20Code%20%5BSonnet%204.5%5D-v1.0'>AIA PAI Nc Hin R Claude Code [Sonnet 4.5] v1.0</a></i></p>"
+        )
 
     # JAM Mode Callbacks ----------------------------------------------
     def _on_new_session(self) -> None:
