@@ -98,10 +98,10 @@ class MainWindow(QMainWindow):
 
     # UI Construction -------------------------------------------------
     def _create_actions(self) -> None:
-        self.action_new = self._make_action("&New Project", "Ctrl+N", self.new_project)
-        self.action_open = self._make_action("&Open Project…", "Ctrl+O", self.open_project)
-        self.action_save = self._make_action("&Save Project", "Ctrl+S", self.save_project)
-        self.action_save_as = self._make_action("Save Project &As…", "Ctrl+Shift+S", self.save_project_as)
+        self.action_new = self._make_action("&New", "Ctrl+N", self.new_project)
+        self.action_open = self._make_action("&Open…", "Ctrl+O", self.open_project)
+        self.action_save = self._make_action("&Save", "Ctrl+S", self.save_project)
+        self.action_save_as = self._make_action("Save &As…", "Ctrl+Shift+S", self.save_project_as)
         self.action_quit = self._make_action("&Quit", "Ctrl+Q", self.close)
 
     def _create_menus(self) -> None:
