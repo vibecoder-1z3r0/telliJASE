@@ -9,10 +9,12 @@ import numpy as np
 
 try:
     import pygame.mixer
-
     PYGAME_AVAILABLE = True
+    # Detect if using pygame-ce (community edition)
+    PYGAME_VERSION = getattr(pygame, "__version__", "unknown")
 except ImportError:
     PYGAME_AVAILABLE = False
+    PYGAME_VERSION = None
     pygame = None  # type: ignore
 
 from ..models import PSGState
@@ -60,7 +62,7 @@ class PygamePSGPlayer:
                 channels=1,  # Mono
                 buffer=buffer_size,
             )
-            logger.info(f"PygamePSGPlayer initialized: {sample_rate}Hz, {buffer_size} samples")
+            logger.info(f"PygamePSGPlayer initialized: {sample_rate}Hz, {buffer_size} samples (pygame {PYGAME_VERSION})")
         except Exception as e:
             logger.error(f"Failed to initialize pygame mixer: {e}")
             self.available = False
@@ -133,4 +135,4 @@ class PygamePSGPlayer:
         return (clipped * 32767).astype(np.int16)
 
 
-__all__ = ["PygamePSGPlayer", "PYGAME_AVAILABLE"]
+__all__ = ["PygamePSGPlayer", "PYGAME_AVAILABLE", "PYGAME_VERSION"]

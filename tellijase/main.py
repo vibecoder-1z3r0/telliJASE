@@ -412,21 +412,41 @@ class MainWindow(QMainWindow):
         self.register_display.setText("\n".join(lines))
 
     def _on_play_audio(self) -> None:
-        """Start real-time audio playback."""
+        """Start real-time audio playback with automatic backend fallback."""
         if not self.audio_available:
             self._warn_audio_missing()
             return
 
+        # Try current backend
         if self.audio_stream and self.audio_stream.start():
             self.btn_play.setEnabled(False)
             self.btn_stop.setEnabled(True)
-            self.statusBar().showMessage("Playing (move sliders to hear changes)…", 3000)
-        else:
-            QMessageBox.warning(
-                self,
-                "Playback Failed",
-                "Failed to start audio stream. Check console for errors.",
-            )
+            self.statusBar().showMessage(f"Playing with {self.audio_backend}…", 3000)
+            return
+
+        # Current backend failed - try fallback to pygame
+        if self.audio_backend == "sounddevice" and PYGAME_AVAILABLE:
+            logger.warning("sounddevice failed to start, falling back to pygame")
+            try:
+                self.audio_stream = PygamePSGPlayer(self.current_state)
+                self.audio_backend = "pygame"
+                if self.audio_stream.start():
+                    self.btn_play.setEnabled(False)
+                    self.btn_stop.setEnabled(True)
+                    self.jam_status_label.setText(f"Audio: {self.audio_backend} (fallback)")
+                    self.jam_status_label.setStyleSheet("color: orange;")
+                    self.statusBar().showMessage(f"Playing with {self.audio_backend} (fallback)…", 3000)
+                    return
+            except Exception as e:
+                logger.error(f"pygame fallback failed: {e}")
+
+        # All backends failed
+        QMessageBox.warning(
+            self,
+            "Playback Failed",
+            f"Failed to start audio with {self.audio_backend}.\n\n"
+            "Check console for errors. Audio may not be available in this environment.",
+        )
 
     def _on_stop_audio(self) -> None:
         """Stop audio playback."""
