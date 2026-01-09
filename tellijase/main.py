@@ -20,6 +20,7 @@ from PySide6.QtWidgets import (
     QMenuBar,
     QMessageBox,
     QPushButton,
+    QSlider,
     QStatusBar,
     QTabWidget,
     QToolBar,
@@ -28,6 +29,7 @@ from PySide6.QtWidgets import (
 )
 
 from tellijase.audio.stream import LivePSGStream, SOUNDDEVICE_AVAILABLE
+from tellijase.audio.pygame_player import PygamePSGPlayer, PYGAME_AVAILABLE
 from tellijase.models import JAMSnapshot, PSGState
 from tellijase.storage import JamSession, Project, load_project, new_project, save_project
 from tellijase.ui.jam_controls import ChannelControl
@@ -49,18 +51,33 @@ class MainWindow(QMainWindow):
         # UI widgets
         self.channel_controls: list[ChannelControl] = []
 
-        # Audio
-        self.audio_stream: Optional[LivePSGStream] = None
-        self.audio_available = SOUNDDEVICE_AVAILABLE
+        # Audio - try sounddevice first, fall back to pygame
+        self.audio_stream = None
+        self.audio_backend = None
+        self.audio_available = False
 
-        if self.audio_available:
+        # Try sounddevice (best for real-time)
+        if SOUNDDEVICE_AVAILABLE:
             try:
                 self.audio_stream = LivePSGStream(self.current_state)
-                logger.info("Audio stream initialized")
+                self.audio_backend = "sounddevice"
+                self.audio_available = True
+                logger.info("Audio initialized with sounddevice")
             except Exception as e:
-                logger.error(f"Failed to initialize audio: {e}")
-                self.audio_available = False
-                self.audio_stream = None
+                logger.warning(f"sounddevice failed: {e}, trying pygame...")
+
+        # Fall back to pygame if sounddevice failed
+        if not self.audio_available and PYGAME_AVAILABLE:
+            try:
+                self.audio_stream = PygamePSGPlayer(self.current_state)
+                self.audio_backend = "pygame"
+                self.audio_available = True
+                logger.info("Audio initialized with pygame.mixer")
+            except Exception as e:
+                logger.error(f"pygame audio failed: {e}")
+
+        if not self.audio_available:
+            logger.warning("No audio backend available")
 
         self.setMinimumSize(1280, 768)
         self.resize(1600, 900)
@@ -151,7 +168,41 @@ class MainWindow(QMainWindow):
             self.channel_controls.append(control)
         layout.addLayout(channel_row)
 
-        self.jam_status_label = QLabel("Shadow registers ready.")
+        # Noise period control (shared across all channels)
+        noise_group = QWidget()
+        noise_layout = QVBoxLayout(noise_group)
+        noise_layout.setContentsMargins(20, 10, 20, 10)
+
+        self.noise_label = QLabel("Noise Period: 0 (disabled)")
+        noise_layout.addWidget(self.noise_label)
+
+        self.noise_slider = QSlider(Qt.Horizontal)
+        self.noise_slider.setRange(0, 31)  # R6 is 5 bits (0-31)
+        self.noise_slider.setValue(0)
+        self.noise_slider.valueChanged.connect(self._on_noise_changed)
+        noise_layout.addWidget(self.noise_slider)
+
+        layout.addWidget(noise_group)
+
+        # Register value display
+        register_group = QWidget()
+        register_layout = QVBoxLayout(register_group)
+        register_layout.setContentsMargins(20, 10, 20, 10)
+
+        register_layout.addWidget(QLabel("<b>PSG Register Values (hex):</b>"))
+
+        self.register_display = QLabel()
+        self.register_display.setFont(QApplication.font("Monospace"))
+        self.register_display.setStyleSheet(
+            "background-color: #1e1e1e; color: #00ff00; padding: 10px; "
+            "font-family: monospace; font-size: 10pt;"
+        )
+        self.register_display.setWordWrap(True)
+        register_layout.addWidget(self.register_display)
+
+        layout.addWidget(register_group)
+
+        self.jam_status_label = QLabel("PSG state ready.")
         layout.addWidget(self.jam_status_label)
 
         layout.addStretch()
@@ -194,18 +245,18 @@ class MainWindow(QMainWindow):
             else:
                 channel = self.current_state.channel_c
 
-            # Wire signals to model (direct field assignment)
+            # Wire signals to model (direct field assignment + register display update)
             control.frequency_changed.connect(
-                lambda freq, ch=channel: setattr(ch, "frequency", freq)
+                lambda freq, ch=channel: self._update_channel_param(ch, "frequency", freq)
             )
             control.volume_changed.connect(
-                lambda vol, ch=channel: setattr(ch, "volume", vol)
+                lambda vol, ch=channel: self._update_channel_param(ch, "volume", vol)
             )
             control.tone_enabled_changed.connect(
-                lambda enabled, ch=channel: setattr(ch, "tone_enabled", enabled)
+                lambda enabled, ch=channel: self._update_channel_param(ch, "tone_enabled", enabled)
             )
             control.noise_enabled_changed.connect(
-                lambda enabled, ch=channel: setattr(ch, "noise_enabled", enabled)
+                lambda enabled, ch=channel: self._update_channel_param(ch, "noise_enabled", enabled)
             )
 
     def _initialize_jam_controls(self) -> None:
@@ -213,13 +264,19 @@ class MainWindow(QMainWindow):
         for control in self.channel_controls:
             control.emit_state()
 
+        # Update register display with initial state
+        self._update_register_display()
+
         if not self.audio_available:
             self.btn_play.setEnabled(False)
             self.btn_stop.setEnabled(False)
             self.jam_status_label.setText(
-                "⚠️ Audio unavailable (sounddevice not installed)"
+                f"⚠️ Audio unavailable (no backend found)"
             )
             self.jam_status_label.setStyleSheet("color: orange; font-weight: bold;")
+        else:
+            self.jam_status_label.setText(f"Audio: {self.audio_backend}")
+            self.jam_status_label.setStyleSheet("color: green;")
 
     def _make_action(self, text: str, shortcut: str, handler) -> QAction:
         action = QAction(text, self)
@@ -309,6 +366,50 @@ class MainWindow(QMainWindow):
         session.updated = datetime.utcnow().isoformat()
         self.project.touch()
         self.statusBar().showMessage(f"Snapshot saved to {session.name}", 3000)
+
+    def _on_noise_changed(self, value: int) -> None:
+        """Noise period slider changed - update PSG state."""
+        self.current_state.noise_period = value
+        if value == 0:
+            self.noise_label.setText("Noise Period: 0 (disabled)")
+        else:
+            # Show period value and approximate frequency
+            from tellijase.psg.utils import CLOCK_HZ
+            freq = CLOCK_HZ / (32.0 * value) if value > 0 else 0
+            self.noise_label.setText(f"Noise Period: {value} (~{freq:.0f} Hz)")
+        self._update_register_display()
+
+    def _update_channel_param(self, channel, param_name: str, value) -> None:
+        """Update a channel parameter and refresh register display.
+
+        Args:
+            channel: PSGChannel to update
+            param_name: Name of the parameter to set
+            value: New value
+        """
+        setattr(channel, param_name, value)
+        self._update_register_display()
+
+    def _update_register_display(self) -> None:
+        """Update the register value display with current PSG state."""
+        regs = self.current_state.to_registers()
+
+        # Format registers in a nice display
+        lines = []
+        lines.append("Tone Periods:")
+        lines.append(f"  A: R0=${regs.get('R0', 0):02X} R1=${regs.get('R1', 0):02X}  (12-bit period)")
+        lines.append(f"  B: R2=${regs.get('R2', 0):02X} R3=${regs.get('R3', 0):02X}")
+        lines.append(f"  C: R4=${regs.get('R4', 0):02X} R5=${regs.get('R5', 0):02X}")
+        lines.append("")
+        lines.append(f"Noise:  R6=${regs.get('R6', 0):02X}")
+        lines.append(f"Mixer:  R7=${regs.get('R7', 0xFF):02X}  (0=enable, 1=disable)")
+        lines.append("")
+        lines.append("Volumes:")
+        lines.append(f"  A: R10=${regs.get('R10', 0):02X}  B: R11=${regs.get('R11', 0):02X}  C: R12=${regs.get('R12', 0):02X}")
+        lines.append("")
+        lines.append(f"Envelope: R13=${regs.get('R13', 0):02X} R14=${regs.get('R14', 0):02X} R15=${regs.get('R15', 0):02X}")
+
+        self.register_display.setText("\n".join(lines))
 
     def _on_play_audio(self) -> None:
         """Start real-time audio playback."""
