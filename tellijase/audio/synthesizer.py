@@ -64,15 +64,16 @@ class PSGSynthesizer:
             if not tone_enabled and not noise_enabled:
                 continue  # Channel fully muted
 
-            # Generate channel signal (tone AND/OR noise BEFORE volume)
-            channel_signal = np.zeros(num_samples, dtype=np.float32)
+            # Generate channel signal using hardware-accurate gating (multiplication)
+            # PSG uses AND logic: tone * noise creates the characteristic gated sound
+            channel_signal = np.ones(num_samples, dtype=np.float32)
 
             if tone_enabled:
                 period = self._read_period(regs, fine_r, coarse_r)
                 freq = period_to_frequency(period)
                 if freq > 0:
                     tone, new_phase = self._generate_tone(num_samples, freq, phase)
-                    channel_signal += tone
+                    channel_signal *= tone
 
                     # Update phase accumulator
                     if idx == 0:
@@ -83,7 +84,7 @@ class PSGSynthesizer:
                         self.phase_c = new_phase
 
             if noise_enabled:
-                channel_signal += noise
+                channel_signal *= noise
 
             # Apply volume to MIXED signal (this is the key!)
             volume = regs.get(vol_r, 0) & 0x0F
