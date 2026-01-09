@@ -3,6 +3,8 @@
 from __future__ import annotations
 
 import logging
+import threading
+import time
 from typing import Optional
 
 import numpy as np
@@ -34,7 +36,7 @@ class PygamePSGPlayer:
         self,
         psg_state: PSGState,
         sample_rate: int = 44100,
-        buffer_size: int = 2048,
+        buffer_size: int = 4096,  # Larger buffer for smoother playback
     ):
         """Initialize pygame audio player.
 
@@ -49,29 +51,60 @@ class PygamePSGPlayer:
         self.synth = PSGSynthesizer(sample_rate)
         self.available = PYGAME_AVAILABLE
         self.playing = False
+        self.channel = None
+        self.update_thread = None
+        self.stop_event = threading.Event()
 
         if not self.available:
             logger.warning("pygame not available - audio disabled")
             return
 
         try:
-            # Initialize pygame mixer
+            # Initialize pygame mixer with smaller system buffer for lower latency
             pygame.mixer.init(
                 frequency=sample_rate,
                 size=-16,  # 16-bit signed
                 channels=1,  # Mono
-                buffer=buffer_size,
+                buffer=1024,  # System buffer (not our generation buffer)
             )
+            # Reserve a channel for our audio
+            pygame.mixer.set_num_channels(1)
+            self.channel = pygame.mixer.Channel(0)
             logger.info(f"PygamePSGPlayer initialized: {sample_rate}Hz, {buffer_size} samples (pygame {PYGAME_VERSION})")
         except Exception as e:
             logger.error(f"Failed to initialize pygame mixer: {e}")
             self.available = False
 
-    def start(self) -> bool:
-        """Start continuous audio playback.
+    def _audio_update_loop(self) -> None:
+        """Background thread that continuously regenerates and queues audio."""
+        logger.debug("Audio update thread started")
 
-        Note: pygame.mixer doesn't have true streaming callbacks, so we use
-        a short buffer and queue the next buffer when the current one ends.
+        try:
+            while not self.stop_event.is_set():
+                # Check if channel has room in queue (queue() returns None if full)
+                if self.channel.get_queue() is None:
+                    # Generate fresh buffer with current PSG state
+                    state = self.psg_state.snapshot()
+                    samples = self.synth.render_buffer(self.buffer_size, state)
+                    pcm = self._to_int16(samples)
+
+                    # Create sound and queue it
+                    sound = pygame.mixer.Sound(buffer=pcm)
+                    self.channel.queue(sound)
+
+                # Small sleep to avoid busy-waiting
+                time.sleep(0.01)  # 10ms
+
+        except Exception as e:
+            logger.error(f"Error in audio update loop: {e}")
+        finally:
+            logger.debug("Audio update thread stopped")
+
+    def start(self) -> bool:
+        """Start continuous audio playback with real-time parameter updates.
+
+        Uses a background thread to continuously regenerate audio based on
+        current PSG state, allowing sliders to affect the sound in real-time.
 
         Returns:
             True if started successfully
@@ -84,19 +117,24 @@ class PygamePSGPlayer:
             return True
 
         try:
-            # Generate initial buffer
+            # Generate and play initial buffer to start audio immediately
             state = self.psg_state.snapshot()
             samples = self.synth.render_buffer(self.buffer_size, state)
-
-            # Convert to int16 for pygame
             pcm = self._to_int16(samples)
-
-            # Create Sound object and play
             sound = pygame.mixer.Sound(buffer=pcm)
-            sound.play(loops=-1)  # Loop continuously
+            self.channel.play(sound)
+
+            # Start background thread to continuously regenerate audio
+            self.stop_event.clear()
+            self.update_thread = threading.Thread(
+                target=self._audio_update_loop,
+                daemon=True,
+                name="PygameAudioUpdate"
+            )
+            self.update_thread.start()
 
             self.playing = True
-            logger.info("Pygame audio started")
+            logger.info("Pygame audio started with continuous regeneration")
             return True
 
         except Exception as e:
@@ -104,10 +142,20 @@ class PygamePSGPlayer:
             return False
 
     def stop(self) -> None:
-        """Stop audio playback."""
+        """Stop audio playback and background thread."""
         if self.available and self.playing:
             try:
-                pygame.mixer.stop()
+                # Signal thread to stop
+                self.stop_event.set()
+
+                # Wait for thread to finish (with timeout)
+                if self.update_thread and self.update_thread.is_alive():
+                    self.update_thread.join(timeout=1.0)
+
+                # Stop audio
+                if self.channel:
+                    self.channel.stop()
+
                 self.playing = False
                 logger.info("Pygame audio stopped")
             except Exception as e:
