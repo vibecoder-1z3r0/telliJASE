@@ -60,6 +60,8 @@ class ChannelControl(QGroupBox):
         self.freq_slider = QSlider(Qt.Horizontal)
         self.freq_slider.setRange(27, 2000)  # Hardware minimum (period=4095) to musical range
         self.freq_slider.setValue(initial_freq)
+        self.freq_slider.setTickPosition(QSlider.TicksBelow)
+        self.freq_slider.setTickInterval(100)  # Tick marks every 100 Hz
         self.freq_slider.valueChanged.connect(self._on_freq_slider_changed)
 
         self.freq_input = QLineEdit()
@@ -100,6 +102,7 @@ class ChannelControl(QGroupBox):
         self.vol_slider.setMinimumHeight(100)
         self.vol_slider.setTickPosition(QSlider.TicksBothSides)
         self.vol_slider.setTickInterval(1)  # Show tick for each volume level (0-15)
+        self.vol_slider.setPageStep(1)  # Click on track moves by 1 instead of default 10
         self.vol_slider.valueChanged.connect(self._on_vol_changed)
         right_pane.addWidget(self.vol_slider, alignment=Qt.AlignCenter)
 
