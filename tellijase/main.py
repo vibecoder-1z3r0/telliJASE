@@ -184,21 +184,51 @@ class MainWindow(QMainWindow):
 
         layout.addWidget(noise_group)
 
-        # Register value display
+        # Register value display (split: INPUT | OUTPUT)
         register_group = QWidget()
         register_layout = QVBoxLayout(register_group)
         register_layout.setContentsMargins(20, 10, 20, 10)
 
-        register_layout.addWidget(QLabel("<b>PSG Register Values (hex):</b>"))
+        register_layout.addWidget(QLabel("<b>PSG Chip I/O:</b>"))
 
-        self.register_display = QLabel()
-        self.register_display.setFont(QApplication.font("Monospace"))
-        self.register_display.setStyleSheet(
+        # Horizontal split for input/output
+        io_row = QHBoxLayout()
+
+        # LEFT: Input (raw register values)
+        input_group = QWidget()
+        input_layout = QVBoxLayout(input_group)
+        input_layout.setContentsMargins(0, 0, 5, 0)
+        input_layout.addWidget(QLabel("<i>Input (Register Values):</i>"))
+
+        self.register_input_display = QLabel()
+        self.register_input_display.setFont(QApplication.font("Monospace"))
+        self.register_input_display.setStyleSheet(
             "background-color: #1e1e1e; color: #00ff00; padding: 10px; "
-            "font-family: monospace; font-size: 10pt;"
+            "font-family: monospace; font-size: 9pt;"
         )
-        self.register_display.setWordWrap(True)
-        register_layout.addWidget(self.register_display)
+        self.register_input_display.setWordWrap(False)
+        self.register_input_display.setAlignment(Qt.AlignTop | Qt.AlignLeft)
+        input_layout.addWidget(self.register_input_display)
+
+        # RIGHT: Output (decoded values)
+        output_group = QWidget()
+        output_layout = QVBoxLayout(output_group)
+        output_layout.setContentsMargins(5, 0, 0, 0)
+        output_layout.addWidget(QLabel("<i>Output (Actual Sound):</i>"))
+
+        self.register_output_display = QLabel()
+        self.register_output_display.setFont(QApplication.font("Monospace"))
+        self.register_output_display.setStyleSheet(
+            "background-color: #1e1e1e; color: #00aaff; padding: 10px; "
+            "font-family: monospace; font-size: 9pt;"
+        )
+        self.register_output_display.setWordWrap(False)
+        self.register_output_display.setAlignment(Qt.AlignTop | Qt.AlignLeft)
+        output_layout.addWidget(self.register_output_display)
+
+        io_row.addWidget(input_group)
+        io_row.addWidget(output_group)
+        register_layout.addLayout(io_row)
 
         layout.addWidget(register_group)
 
@@ -392,24 +422,85 @@ class MainWindow(QMainWindow):
 
     def _update_register_display(self) -> None:
         """Update the register value display with current PSG state."""
+        from tellijase.psg.utils import period_to_frequency
+
         regs = self.current_state.to_registers()
 
-        # Format registers in a nice display
-        lines = []
-        lines.append("Tone Periods:")
-        lines.append(f"  A: R0=${regs.get('R0', 0):02X} R1=${regs.get('R1', 0):02X}  (12-bit period)")
-        lines.append(f"  B: R2=${regs.get('R2', 0):02X} R3=${regs.get('R3', 0):02X}")
-        lines.append(f"  C: R4=${regs.get('R4', 0):02X} R5=${regs.get('R5', 0):02X}")
-        lines.append("")
-        lines.append(f"Noise:  R6=${regs.get('R6', 0):02X}")
-        lines.append(f"Mixer:  R7=${regs.get('R7', 0xFF):02X}  (0=enable, 1=disable)")
-        lines.append("")
-        lines.append("Volumes:")
-        lines.append(f"  A: R10=${regs.get('R10', 0):02X}  B: R11=${regs.get('R11', 0):02X}  C: R12=${regs.get('R12', 0):02X}")
-        lines.append("")
-        lines.append(f"Envelope: R13=${regs.get('R13', 0):02X} R14=${regs.get('R14', 0):02X} R15=${regs.get('R15', 0):02X}")
+        # LEFT: Input (raw register values)
+        input_lines = []
+        input_lines.append("Tone Periods:")
+        input_lines.append(f"  A: R0=${regs.get('R0', 0):02X} R1=${regs.get('R1', 0):02X}")
+        input_lines.append(f"  B: R2=${regs.get('R2', 0):02X} R3=${regs.get('R3', 0):02X}")
+        input_lines.append(f"  C: R4=${regs.get('R4', 0):02X} R5=${regs.get('R5', 0):02X}")
+        input_lines.append("")
+        input_lines.append(f"Noise: R6=${regs.get('R6', 0):02X}")
+        input_lines.append(f"Mixer: R7=${regs.get('R7', 0xFF):02X}")
+        input_lines.append("")
+        input_lines.append("Volumes:")
+        input_lines.append(f"  A: R10=${regs.get('R10', 0):02X}")
+        input_lines.append(f"  B: R11=${regs.get('R11', 0):02X}")
+        input_lines.append(f"  C: R12=${regs.get('R12', 0):02X}")
+        input_lines.append("")
+        input_lines.append("Envelope:")
+        input_lines.append(f"  R13=${regs.get('R13', 0):02X} R14=${regs.get('R14', 0):02X}")
+        input_lines.append(f"  R15=${regs.get('R15', 0):02X}")
 
-        self.register_display.setText("\n".join(lines))
+        self.register_input_display.setText("\n".join(input_lines))
+
+        # RIGHT: Output (decoded values)
+        output_lines = []
+
+        # Decode mixer
+        r7 = regs.get('R7', 0xFF)
+
+        # Channel A
+        period_a = (regs.get('R1', 0) << 8) | regs.get('R0', 0)
+        freq_a = period_to_frequency(period_a)
+        vol_a = regs.get('R10', 0) & 0x0F
+        tone_a = "Tone" if not (r7 & 0x01) else ""
+        noise_a = "Noise" if not (r7 & 0x08) else ""
+        mix_a = "+".join(filter(None, [tone_a, noise_a])) or "Silent"
+
+        output_lines.append(f"Channel A: {freq_a:6.1f} Hz")
+        output_lines.append(f"  Volume: {vol_a:2d}/15")
+        output_lines.append(f"  Mix: {mix_a}")
+        output_lines.append("")
+
+        # Channel B
+        period_b = (regs.get('R3', 0) << 8) | regs.get('R2', 0)
+        freq_b = period_to_frequency(period_b)
+        vol_b = regs.get('R11', 0) & 0x0F
+        tone_b = "Tone" if not (r7 & 0x02) else ""
+        noise_b = "Noise" if not (r7 & 0x10) else ""
+        mix_b = "+".join(filter(None, [tone_b, noise_b])) or "Silent"
+
+        output_lines.append(f"Channel B: {freq_b:6.1f} Hz")
+        output_lines.append(f"  Volume: {vol_b:2d}/15")
+        output_lines.append(f"  Mix: {mix_b}")
+        output_lines.append("")
+
+        # Channel C
+        period_c = (regs.get('R5', 0) << 8) | regs.get('R4', 0)
+        freq_c = period_to_frequency(period_c)
+        vol_c = regs.get('R12', 0) & 0x0F
+        tone_c = "Tone" if not (r7 & 0x04) else ""
+        noise_c = "Noise" if not (r7 & 0x20) else ""
+        mix_c = "+".join(filter(None, [tone_c, noise_c])) or "Silent"
+
+        output_lines.append(f"Channel C: {freq_c:6.1f} Hz")
+        output_lines.append(f"  Volume: {vol_c:2d}/15")
+        output_lines.append(f"  Mix: {mix_c}")
+        output_lines.append("")
+
+        # Noise
+        noise_period = regs.get('R6', 0)
+        if noise_period > 0:
+            noise_freq = period_to_frequency(noise_period)
+            output_lines.append(f"Noise: {noise_freq:6.1f} Hz")
+        else:
+            output_lines.append("Noise: Disabled")
+
+        self.register_output_display.setText("\n".join(output_lines))
 
     def _on_play_audio(self) -> None:
         """Start real-time audio playback with automatic backend fallback."""
