@@ -64,16 +64,14 @@ class PSGSynthesizer:
             if not tone_enabled and not noise_enabled:
                 continue  # Channel fully muted
 
-            # Generate channel signal using hardware-accurate gating (multiplication)
-            # PSG uses AND logic: tone * noise creates the characteristic gated sound
-            channel_signal = np.ones(num_samples, dtype=np.float32)
-
-            if tone_enabled:
+            # Hardware-accurate digital AND gating
+            # PSG treats tone/noise as digital signals (HIGH/LOW) and uses AND logic
+            if tone_enabled and noise_enabled:
+                # Both enabled: AND gate (output HIGH only when both are HIGH)
                 period = self._read_period(regs, fine_r, coarse_r)
                 freq = period_to_frequency(period)
                 if freq > 0:
                     tone, new_phase = self._generate_tone(num_samples, freq, phase)
-                    channel_signal *= tone
 
                     # Update phase accumulator
                     if idx == 0:
@@ -83,8 +81,30 @@ class PSGSynthesizer:
                     else:
                         self.phase_c = new_phase
 
-            if noise_enabled:
-                channel_signal *= noise
+                    # Digital AND: output is +1 only when BOTH tone and noise are +1
+                    channel_signal = np.where((tone > 0) & (noise > 0), 1.0, -1.0).astype(np.float32)
+                else:
+                    channel_signal = noise
+            elif tone_enabled:
+                # Tone only
+                period = self._read_period(regs, fine_r, coarse_r)
+                freq = period_to_frequency(period)
+                if freq > 0:
+                    tone, new_phase = self._generate_tone(num_samples, freq, phase)
+                    channel_signal = tone
+
+                    # Update phase accumulator
+                    if idx == 0:
+                        self.phase_a = new_phase
+                    elif idx == 1:
+                        self.phase_b = new_phase
+                    else:
+                        self.phase_c = new_phase
+                else:
+                    channel_signal = np.zeros(num_samples, dtype=np.float32)
+            else:
+                # Noise only
+                channel_signal = noise
 
             # Apply volume to MIXED signal (this is the key!)
             volume = regs.get(vol_r, 0) & 0x0F
