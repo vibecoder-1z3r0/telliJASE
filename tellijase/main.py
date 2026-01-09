@@ -15,6 +15,7 @@ from PySide6.QtWidgets import (
     QFileDialog,
     QHBoxLayout,
     QLabel,
+    QLineEdit,
     QMainWindow,
     QMenu,
     QMenuBar,
@@ -176,11 +177,21 @@ class MainWindow(QMainWindow):
         self.noise_label = QLabel("Noise Period: 0 (disabled)")
         noise_layout.addWidget(self.noise_label)
 
+        # Horizontal layout with slider and text input
+        noise_row = QHBoxLayout()
         self.noise_slider = QSlider(Qt.Horizontal)
         self.noise_slider.setRange(0, 31)  # R6 is 5 bits (0-31)
         self.noise_slider.setValue(0)
-        self.noise_slider.valueChanged.connect(self._on_noise_changed)
-        noise_layout.addWidget(self.noise_slider)
+        self.noise_slider.valueChanged.connect(self._on_noise_slider_changed)
+
+        self.noise_input = QLineEdit()
+        self.noise_input.setMaximumWidth(70)
+        self.noise_input.setText("0")
+        self.noise_input.editingFinished.connect(self._on_noise_input_changed)
+
+        noise_row.addWidget(self.noise_slider)
+        noise_row.addWidget(self.noise_input)
+        noise_layout.addLayout(noise_row)
 
         layout.addWidget(noise_group)
 
@@ -397,9 +408,12 @@ class MainWindow(QMainWindow):
         self.project.touch()
         self.statusBar().showMessage(f"Snapshot saved to {session.name}", 3000)
 
-    def _on_noise_changed(self, value: int) -> None:
-        """Noise period slider changed - update PSG state."""
+    def _on_noise_slider_changed(self, value: int) -> None:
+        """Noise period slider changed - update text input and PSG state."""
         self.current_state.noise_period = value
+        self.noise_input.blockSignals(True)
+        self.noise_input.setText(str(value))
+        self.noise_input.blockSignals(False)
         if value == 0:
             self.noise_label.setText("Noise Period: 0 (disabled)")
         else:
@@ -408,6 +422,28 @@ class MainWindow(QMainWindow):
             freq = CLOCK_HZ / (32.0 * value) if value > 0 else 0
             self.noise_label.setText(f"Noise Period: {value} (~{freq:.0f} Hz)")
         self._update_register_display()
+
+    def _on_noise_input_changed(self) -> None:
+        """Noise period text input changed - update slider and PSG state."""
+        try:
+            value = int(self.noise_input.text())
+            # Clamp to valid range (0-31)
+            value = max(0, min(31, value))
+            self.noise_slider.blockSignals(True)
+            self.noise_slider.setValue(value)
+            self.noise_slider.blockSignals(False)
+            self.noise_input.setText(str(value))  # Show clamped value
+            self.current_state.noise_period = value
+            if value == 0:
+                self.noise_label.setText("Noise Period: 0 (disabled)")
+            else:
+                from tellijase.psg.utils import CLOCK_HZ
+                freq = CLOCK_HZ / (32.0 * value) if value > 0 else 0
+                self.noise_label.setText(f"Noise Period: {value} (~{freq:.0f} Hz)")
+            self._update_register_display()
+        except ValueError:
+            # Invalid input - restore from slider
+            self.noise_input.setText(str(self.noise_slider.value()))
 
     def _update_channel_param(self, channel, param_name: str, value) -> None:
         """Update a channel parameter and refresh register display.
@@ -459,9 +495,9 @@ class MainWindow(QMainWindow):
         vol_a = regs.get('R10', 0) & 0x0F
         tone_a = "Tone" if not (r7 & 0x01) else ""
         noise_a = "Noise" if not (r7 & 0x08) else ""
-        mix_a = "+".join(filter(None, [tone_a, noise_a])) or "Silent"
+        mix_a = "+".join(filter(None, [tone_a, noise_a])) or "MUTE"
 
-        output_lines.append(f"Channel A: {freq_a:6.1f} Hz")
+        output_lines.append(f"Channel A: {freq_a:6.1f} Hz (period={period_a})")
         output_lines.append(f"  Volume: {vol_a:2d}/15")
         output_lines.append(f"  Mix: {mix_a}")
         output_lines.append("")
@@ -472,9 +508,9 @@ class MainWindow(QMainWindow):
         vol_b = regs.get('R11', 0) & 0x0F
         tone_b = "Tone" if not (r7 & 0x02) else ""
         noise_b = "Noise" if not (r7 & 0x10) else ""
-        mix_b = "+".join(filter(None, [tone_b, noise_b])) or "Silent"
+        mix_b = "+".join(filter(None, [tone_b, noise_b])) or "MUTE"
 
-        output_lines.append(f"Channel B: {freq_b:6.1f} Hz")
+        output_lines.append(f"Channel B: {freq_b:6.1f} Hz (period={period_b})")
         output_lines.append(f"  Volume: {vol_b:2d}/15")
         output_lines.append(f"  Mix: {mix_b}")
         output_lines.append("")
@@ -485,9 +521,9 @@ class MainWindow(QMainWindow):
         vol_c = regs.get('R12', 0) & 0x0F
         tone_c = "Tone" if not (r7 & 0x04) else ""
         noise_c = "Noise" if not (r7 & 0x20) else ""
-        mix_c = "+".join(filter(None, [tone_c, noise_c])) or "Silent"
+        mix_c = "+".join(filter(None, [tone_c, noise_c])) or "MUTE"
 
-        output_lines.append(f"Channel C: {freq_c:6.1f} Hz")
+        output_lines.append(f"Channel C: {freq_c:6.1f} Hz (period={period_c})")
         output_lines.append(f"  Volume: {vol_c:2d}/15")
         output_lines.append(f"  Mix: {mix_c}")
         output_lines.append("")
@@ -496,9 +532,19 @@ class MainWindow(QMainWindow):
         noise_period = regs.get('R6', 0)
         if noise_period > 0:
             noise_freq = period_to_frequency(noise_period)
-            output_lines.append(f"Noise: {noise_freq:6.1f} Hz")
+            output_lines.append(f"Noise: {noise_freq:6.1f} Hz (period={noise_period})")
         else:
-            output_lines.append("Noise: Disabled")
+            output_lines.append("Noise: MUTE")
+        output_lines.append("")
+
+        # Mixer decode (R7 in binary for clarity)
+        output_lines.append(f"Mixer R7: {r7:08b}b")
+        output_lines.append("")
+
+        # Envelope (placeholder for future implementation)
+        env_period = (regs.get('R14', 0) << 8) | regs.get('R13', 0)
+        env_shape = regs.get('R15', 0)
+        output_lines.append("Envelope: Not implemented")
 
         self.register_output_display.setText("\n".join(output_lines))
 
