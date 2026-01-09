@@ -4,7 +4,6 @@ from __future__ import annotations
 
 from PySide6.QtCore import Qt, Signal
 from PySide6.QtWidgets import (
-    QCheckBox,
     QGroupBox,
     QHBoxLayout,
     QLabel,
@@ -103,14 +102,46 @@ class ChannelControl(QGroupBox):
 
         left_pane.addLayout(freq_labels_layout)
 
-        # Mixer checkboxes (R7 control)
-        self.tone_check = QCheckBox("Tone")
+        # Mixer toggle buttons (R7 control) - green when active
+        self.tone_check = QPushButton("Tone")
+        self.tone_check.setCheckable(True)
         self.tone_check.setChecked(True)
+        self.tone_check.setStyleSheet("""
+            QPushButton {
+                background-color: palette(button);
+                border: 1px solid palette(mid);
+                padding: 4px;
+            }
+            QPushButton:checked {
+                background-color: #388e3c;
+                color: white;
+                border: 1px solid #2e7d32;
+            }
+            QPushButton:checked:hover {
+                background-color: #4caf50;
+            }
+        """)
         self.tone_check.toggled.connect(self.tone_enabled_changed)
         left_pane.addWidget(self.tone_check)
 
-        self.noise_check = QCheckBox("Noise")
+        self.noise_check = QPushButton("Noise")
+        self.noise_check.setCheckable(True)
         self.noise_check.setChecked(False)
+        self.noise_check.setStyleSheet("""
+            QPushButton {
+                background-color: palette(button);
+                border: 1px solid palette(mid);
+                padding: 4px;
+            }
+            QPushButton:checked {
+                background-color: #388e3c;
+                color: white;
+                border: 1px solid #2e7d32;
+            }
+            QPushButton:checked:hover {
+                background-color: #4caf50;
+            }
+        """)
         self.noise_check.toggled.connect(self.noise_enabled_changed)
         left_pane.addWidget(self.noise_check)
 
