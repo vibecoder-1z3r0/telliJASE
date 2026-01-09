@@ -221,8 +221,8 @@ class MainWindow(QMainWindow):
             )
             self.jam_status_label.setStyleSheet("color: orange; font-weight: bold;")
 
-    def _make_action(self, text: str, shortcut: str, handler) -> "QAction":
-        action = self.addAction(text)
+    def _make_action(self, text: str, shortcut: str, handler) -> QAction:
+        action = QAction(text, self)
         action.setShortcut(shortcut)
         action.triggered.connect(handler)
         return action
