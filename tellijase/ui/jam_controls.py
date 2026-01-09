@@ -73,6 +73,36 @@ class ChannelControl(QGroupBox):
         freq_row.addWidget(self.freq_input)
         left_pane.addLayout(freq_row)
 
+        # Frequency scale labels below slider
+        freq_labels_layout = QHBoxLayout()
+        freq_labels_layout.setContentsMargins(0, 0, 60, 0)  # Match text input width offset
+
+        # Calculate positions for labels at 100, 500, 1000, 1500 Hz
+        slider_range = 2000 - 27  # Total range
+        label_positions = [100, 500, 1000, 1500]
+
+        # Add initial spacer to account for slider starting at 27 Hz
+        initial_offset = (100 - 27) / slider_range
+        freq_labels_layout.addStretch(int(initial_offset * 1000))
+
+        for i, freq in enumerate(label_positions):
+            label = QLabel(str(freq))
+            label.setAlignment(Qt.AlignCenter)
+            label.setStyleSheet("font-size: 9px; color: gray;")
+            freq_labels_layout.addWidget(label)
+
+            # Add stretch between labels
+            if i < len(label_positions) - 1:
+                next_freq = label_positions[i + 1]
+                stretch = (next_freq - freq) / slider_range
+                freq_labels_layout.addStretch(int(stretch * 1000))
+            else:
+                # Final stretch to end (1500 to 2000)
+                final_stretch = (2000 - freq) / slider_range
+                freq_labels_layout.addStretch(int(final_stretch * 1000))
+
+        left_pane.addLayout(freq_labels_layout)
+
         # Mixer checkboxes (R7 control)
         self.tone_check = QCheckBox("Tone")
         self.tone_check.setChecked(True)
