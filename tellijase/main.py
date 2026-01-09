@@ -24,7 +24,6 @@ from PySide6.QtWidgets import (
     QSlider,
     QStatusBar,
     QTabWidget,
-    QToolBar,
     QVBoxLayout,
     QWidget,
 )
@@ -85,7 +84,6 @@ class MainWindow(QMainWindow):
 
         self._create_actions()
         self._create_menus()
-        self._create_toolbar()
         self._create_status_bar()
         self._create_tabs()
         self._connect_signals()
@@ -117,13 +115,6 @@ class MainWindow(QMainWindow):
         menubar.addMenu(file_menu)
 
         self.setMenuBar(menubar)
-
-    def _create_toolbar(self) -> None:
-        toolbar = QToolBar("Main")
-        toolbar.addAction(self.action_new)
-        toolbar.addAction(self.action_open)
-        toolbar.addAction(self.action_save)
-        self.addToolBar(toolbar)
 
     def _create_status_bar(self) -> None:
         status = QStatusBar()
