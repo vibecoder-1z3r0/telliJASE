@@ -9,6 +9,7 @@ from PySide6.QtWidgets import (
     QHBoxLayout,
     QLabel,
     QLineEdit,
+    QPushButton,
     QSlider,
     QVBoxLayout,
     QWidget,
@@ -35,15 +36,24 @@ class ChannelControl(QGroupBox):
         channel_name = chr(ord("A") + channel_index)
         self.setTitle(f"Channel {channel_name}")
 
-        layout = QVBoxLayout(self)
-        layout.setSpacing(8)
+        # Two-pane layout: Left (frequency + checkboxes) | Right (volume fader)
+        main_layout = QHBoxLayout(self)
+        main_layout.setSpacing(12)
 
-        # Frequency slider (27 Hz - 2000 Hz, hardware min to usable musical range)
         # Default to power chord: A2 (110), A3 (220), E4 (330)
         power_chord_freqs = [110, 220, 330]
         initial_freq = power_chord_freqs[channel_index]
-        self.freq_label = QLabel(f"Frequency: {initial_freq} Hz")
-        layout.addWidget(self.freq_label)
+
+        # Store volume for mute/unmute
+        self._stored_volume = 4
+
+        # === LEFT PANE: Frequency + Mixer ===
+        left_pane = QVBoxLayout()
+        left_pane.setSpacing(8)
+
+        # Frequency slider (27 Hz - 2000 Hz, hardware min to usable musical range)
+        self.freq_label = QLabel(f"Freq: {initial_freq} Hz")
+        left_pane.addWidget(self.freq_label)
 
         # Horizontal layout with slider and text input
         freq_row = QHBoxLayout()
@@ -53,48 +63,58 @@ class ChannelControl(QGroupBox):
         self.freq_slider.valueChanged.connect(self._on_freq_slider_changed)
 
         self.freq_input = QLineEdit()
-        self.freq_input.setMaximumWidth(70)
+        self.freq_input.setMaximumWidth(60)
         self.freq_input.setText(str(initial_freq))
         self.freq_input.editingFinished.connect(self._on_freq_input_changed)
 
         freq_row.addWidget(self.freq_slider)
         freq_row.addWidget(self.freq_input)
-        layout.addLayout(freq_row)
-
-        # Volume slider (0-15)
-        self.vol_label = QLabel("Volume: 4")
-        self.vol_slider = QSlider(Qt.Horizontal)
-        self.vol_slider.setRange(0, 15)
-        self.vol_slider.setValue(4)
-        self.vol_slider.valueChanged.connect(self._on_vol_changed)
-        layout.addWidget(self.vol_label)
-        layout.addWidget(self.vol_slider)
-
-        # Store volume for mute/unmute
-        self._stored_volume = 4
+        left_pane.addLayout(freq_row)
 
         # Mixer checkboxes (R7 control)
         self.tone_check = QCheckBox("Tone")
         self.tone_check.setChecked(True)
         self.tone_check.toggled.connect(self.tone_enabled_changed)
-        layout.addWidget(self.tone_check)
+        left_pane.addWidget(self.tone_check)
 
         self.noise_check = QCheckBox("Noise")
         self.noise_check.setChecked(False)
         self.noise_check.toggled.connect(self.noise_enabled_changed)
-        layout.addWidget(self.noise_check)
+        left_pane.addWidget(self.noise_check)
 
-        # Mute checkbox
-        self.mute_check = QCheckBox("Mute")
-        self.mute_check.setChecked(False)
-        self.mute_check.toggled.connect(self._on_mute_toggled)
-        layout.addWidget(self.mute_check)
+        left_pane.addStretch()
 
-        layout.addStretch()
+        # === RIGHT PANE: Vertical Volume Fader ===
+        right_pane = QVBoxLayout()
+        right_pane.setSpacing(4)
+
+        # Volume label
+        self.vol_label = QLabel("Vol: 4")
+        self.vol_label.setAlignment(Qt.AlignCenter)
+        right_pane.addWidget(self.vol_label)
+
+        # Vertical volume slider (0-15) - like a mixer fader
+        self.vol_slider = QSlider(Qt.Vertical)
+        self.vol_slider.setRange(0, 15)
+        self.vol_slider.setValue(4)
+        self.vol_slider.setMinimumHeight(100)
+        self.vol_slider.valueChanged.connect(self._on_vol_changed)
+        right_pane.addWidget(self.vol_slider, alignment=Qt.AlignCenter)
+
+        # Mute toggle button
+        self.mute_btn = QPushButton("MUTE")
+        self.mute_btn.setCheckable(True)
+        self.mute_btn.setMaximumWidth(60)
+        self.mute_btn.toggled.connect(self._on_mute_toggled)
+        right_pane.addWidget(self.mute_btn, alignment=Qt.AlignCenter)
+
+        # Add panes to main layout
+        main_layout.addLayout(left_pane, stretch=3)
+        main_layout.addLayout(right_pane, stretch=1)
 
     def _on_freq_slider_changed(self, value: int) -> None:
         """Frequency slider moved - update text input and emit signal."""
-        self.freq_label.setText(f"Frequency: {value} Hz")
+        self.freq_label.setText(f"Freq: {value} Hz")
         self.freq_input.blockSignals(True)
         self.freq_input.setText(str(value))
         self.freq_input.blockSignals(False)
@@ -109,7 +129,7 @@ class ChannelControl(QGroupBox):
             self.freq_slider.blockSignals(True)
             self.freq_slider.setValue(value)
             self.freq_slider.blockSignals(False)
-            self.freq_label.setText(f"Frequency: {value} Hz")
+            self.freq_label.setText(f"Freq: {value} Hz")
             self.freq_input.setText(str(value))  # Show clamped value
             self.frequency_changed.emit(float(value))
         except ValueError:
@@ -118,21 +138,21 @@ class ChannelControl(QGroupBox):
 
     def _on_vol_changed(self, value: int) -> None:
         """Volume slider moved - emit high-level signal."""
-        self.vol_label.setText(f"Volume: {value}")
+        self.vol_label.setText(f"Vol: {value}")
         # Store volume if not muted (for restoring after unmute)
-        if not self.mute_check.isChecked():
+        if not self.mute_btn.isChecked():
             self._stored_volume = value
         self.volume_changed.emit(value)
 
     def _on_mute_toggled(self, muted: bool) -> None:
-        """Mute checkbox toggled - set volume to 0 or restore previous."""
+        """Mute button toggled - set volume to 0 or restore previous."""
         if muted:
             # Store current volume and set to 0
             self._stored_volume = self.vol_slider.value()
             self.vol_slider.blockSignals(True)
             self.vol_slider.setValue(0)
             self.vol_slider.blockSignals(False)
-            self.vol_label.setText("Volume: 0 (MUTED)")
+            self.vol_label.setText("MUTED")
             self.vol_slider.setEnabled(False)
             self.volume_changed.emit(0)
         else:
@@ -140,7 +160,7 @@ class ChannelControl(QGroupBox):
             self.vol_slider.blockSignals(True)
             self.vol_slider.setValue(self._stored_volume)
             self.vol_slider.blockSignals(False)
-            self.vol_label.setText(f"Volume: {self._stored_volume}")
+            self.vol_label.setText(f"Vol: {self._stored_volume}")
             self.vol_slider.setEnabled(True)
             self.volume_changed.emit(self._stored_volume)
 
@@ -162,35 +182,35 @@ class ChannelControl(QGroupBox):
         self.vol_slider.blockSignals(True)
         self.tone_check.blockSignals(True)
         self.noise_check.blockSignals(True)
-        self.mute_check.blockSignals(True)
+        self.mute_btn.blockSignals(True)
 
         self.freq_slider.setValue(int(frequency))
         self.freq_input.setText(str(int(frequency)))
         self.tone_check.setChecked(tone_enabled)
         self.noise_check.setChecked(noise_enabled)
-        self.mute_check.setChecked(muted)
+        self.mute_btn.setChecked(muted)
 
         # Set volume and stored volume
         if muted:
             self._stored_volume = volume
             self.vol_slider.setValue(0)
             self.vol_slider.setEnabled(False)
-            self.vol_label.setText("Volume: 0 (MUTED)")
+            self.vol_label.setText("MUTED")
         else:
             self._stored_volume = volume
             self.vol_slider.setValue(volume)
             self.vol_slider.setEnabled(True)
-            self.vol_label.setText(f"Volume: {volume}")
+            self.vol_label.setText(f"Vol: {volume}")
 
         self.freq_slider.blockSignals(False)
         self.freq_input.blockSignals(False)
         self.vol_slider.blockSignals(False)
         self.tone_check.blockSignals(False)
         self.noise_check.blockSignals(False)
-        self.mute_check.blockSignals(False)
+        self.mute_btn.blockSignals(False)
 
         # Update frequency label
-        self.freq_label.setText(f"Frequency: {int(frequency)} Hz")
+        self.freq_label.setText(f"Freq: {int(frequency)} Hz")
 
     def emit_state(self) -> None:
         """Force emission of current UI state (for initialization)."""
@@ -198,7 +218,7 @@ class ChannelControl(QGroupBox):
         self.volume_changed.emit(self.vol_slider.value())
         self.tone_enabled_changed.emit(self.tone_check.isChecked())
         self.noise_enabled_changed.emit(self.noise_check.isChecked())
-        self.muted_changed.emit(self.mute_check.isChecked())
+        self.muted_changed.emit(self.mute_btn.isChecked())
 
 
 __all__ = ["ChannelControl"]
