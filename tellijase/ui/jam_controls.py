@@ -37,7 +37,7 @@ class ChannelControl(QGroupBox):
         layout = QVBoxLayout(self)
         layout.setSpacing(8)
 
-        # Frequency slider (27 Hz - 7000 Hz musical range)
+        # Frequency slider (27 Hz - 2000 Hz, hardware min to usable musical range)
         initial_freq = 440 + channel_index * 110
         self.freq_label = QLabel(f"Frequency: {initial_freq} Hz")
         layout.addWidget(self.freq_label)
@@ -45,7 +45,7 @@ class ChannelControl(QGroupBox):
         # Horizontal layout with slider and text input
         freq_row = QHBoxLayout()
         self.freq_slider = QSlider(Qt.Horizontal)
-        self.freq_slider.setRange(55, 2000)  # Usable musical range
+        self.freq_slider.setRange(27, 2000)  # Hardware minimum (period=4095) to musical range
         self.freq_slider.setValue(initial_freq)
         self.freq_slider.valueChanged.connect(self._on_freq_slider_changed)
 
