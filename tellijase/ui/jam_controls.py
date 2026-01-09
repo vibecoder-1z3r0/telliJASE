@@ -38,7 +38,9 @@ class ChannelControl(QGroupBox):
         layout.setSpacing(8)
 
         # Frequency slider (27 Hz - 2000 Hz, hardware min to usable musical range)
-        initial_freq = 440 + channel_index * 110
+        # Default to power chord: A2 (110), A3 (220), E4 (330)
+        power_chord_freqs = [110, 220, 330]
+        initial_freq = power_chord_freqs[channel_index]
         self.freq_label = QLabel(f"Frequency: {initial_freq} Hz")
         layout.addWidget(self.freq_label)
 
@@ -59,10 +61,10 @@ class ChannelControl(QGroupBox):
         layout.addLayout(freq_row)
 
         # Volume slider (0-15)
-        self.vol_label = QLabel("Volume: 7")
+        self.vol_label = QLabel("Volume: 4")
         self.vol_slider = QSlider(Qt.Horizontal)
         self.vol_slider.setRange(0, 15)
-        self.vol_slider.setValue(7)
+        self.vol_slider.setValue(4)
         self.vol_slider.valueChanged.connect(self._on_vol_changed)
         layout.addWidget(self.vol_label)
         layout.addWidget(self.vol_slider)
