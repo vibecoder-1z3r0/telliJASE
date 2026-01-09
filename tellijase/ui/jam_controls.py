@@ -27,6 +27,7 @@ class ChannelControl(QGroupBox):
     volume_changed = Signal(int)
     tone_enabled_changed = Signal(bool)
     noise_enabled_changed = Signal(bool)
+    muted_changed = Signal(bool)
 
     def __init__(self, channel_index: int, parent: QWidget | None = None) -> None:
         super().__init__(parent)
@@ -69,6 +70,9 @@ class ChannelControl(QGroupBox):
         layout.addWidget(self.vol_label)
         layout.addWidget(self.vol_slider)
 
+        # Store volume for mute/unmute
+        self._stored_volume = 4
+
         # Mixer checkboxes (R7 control)
         self.tone_check = QCheckBox("Tone")
         self.tone_check.setChecked(True)
@@ -79,6 +83,12 @@ class ChannelControl(QGroupBox):
         self.noise_check.setChecked(False)
         self.noise_check.toggled.connect(self.noise_enabled_changed)
         layout.addWidget(self.noise_check)
+
+        # Mute checkbox
+        self.mute_check = QCheckBox("Mute")
+        self.mute_check.setChecked(False)
+        self.mute_check.toggled.connect(self._on_mute_toggled)
+        layout.addWidget(self.mute_check)
 
         layout.addStretch()
 
@@ -109,9 +119,34 @@ class ChannelControl(QGroupBox):
     def _on_vol_changed(self, value: int) -> None:
         """Volume slider moved - emit high-level signal."""
         self.vol_label.setText(f"Volume: {value}")
+        # Store volume if not muted (for restoring after unmute)
+        if not self.mute_check.isChecked():
+            self._stored_volume = value
         self.volume_changed.emit(value)
 
-    def set_state(self, frequency: float, volume: int, tone_enabled: bool, noise_enabled: bool) -> None:
+    def _on_mute_toggled(self, muted: bool) -> None:
+        """Mute checkbox toggled - set volume to 0 or restore previous."""
+        if muted:
+            # Store current volume and set to 0
+            self._stored_volume = self.vol_slider.value()
+            self.vol_slider.blockSignals(True)
+            self.vol_slider.setValue(0)
+            self.vol_slider.blockSignals(False)
+            self.vol_label.setText("Volume: 0 (MUTED)")
+            self.vol_slider.setEnabled(False)
+            self.volume_changed.emit(0)
+        else:
+            # Restore previous volume
+            self.vol_slider.blockSignals(True)
+            self.vol_slider.setValue(self._stored_volume)
+            self.vol_slider.blockSignals(False)
+            self.vol_label.setText(f"Volume: {self._stored_volume}")
+            self.vol_slider.setEnabled(True)
+            self.volume_changed.emit(self._stored_volume)
+
+        self.muted_changed.emit(muted)
+
+    def set_state(self, frequency: float, volume: int, tone_enabled: bool, noise_enabled: bool, muted: bool = False) -> None:
         """Update UI from model (for loading projects).
 
         Args:
@@ -119,6 +154,7 @@ class ChannelControl(QGroupBox):
             volume: Volume 0-15
             tone_enabled: Tone mixer enable
             noise_enabled: Noise mixer enable
+            muted: Channel muted state
         """
         # Block signals to avoid feedback loop
         self.freq_slider.blockSignals(True)
@@ -126,22 +162,35 @@ class ChannelControl(QGroupBox):
         self.vol_slider.blockSignals(True)
         self.tone_check.blockSignals(True)
         self.noise_check.blockSignals(True)
+        self.mute_check.blockSignals(True)
 
         self.freq_slider.setValue(int(frequency))
         self.freq_input.setText(str(int(frequency)))
-        self.vol_slider.setValue(volume)
         self.tone_check.setChecked(tone_enabled)
         self.noise_check.setChecked(noise_enabled)
+        self.mute_check.setChecked(muted)
+
+        # Set volume and stored volume
+        if muted:
+            self._stored_volume = volume
+            self.vol_slider.setValue(0)
+            self.vol_slider.setEnabled(False)
+            self.vol_label.setText("Volume: 0 (MUTED)")
+        else:
+            self._stored_volume = volume
+            self.vol_slider.setValue(volume)
+            self.vol_slider.setEnabled(True)
+            self.vol_label.setText(f"Volume: {volume}")
 
         self.freq_slider.blockSignals(False)
         self.freq_input.blockSignals(False)
         self.vol_slider.blockSignals(False)
         self.tone_check.blockSignals(False)
         self.noise_check.blockSignals(False)
+        self.mute_check.blockSignals(False)
 
-        # Update labels
+        # Update frequency label
         self.freq_label.setText(f"Frequency: {int(frequency)} Hz")
-        self._on_vol_changed(volume)
 
     def emit_state(self) -> None:
         """Force emission of current UI state (for initialization)."""
@@ -149,6 +198,7 @@ class ChannelControl(QGroupBox):
         self.volume_changed.emit(self.vol_slider.value())
         self.tone_enabled_changed.emit(self.tone_check.isChecked())
         self.noise_enabled_changed.emit(self.noise_check.isChecked())
+        self.muted_changed.emit(self.mute_check.isChecked())
 
 
 __all__ = ["ChannelControl"]
