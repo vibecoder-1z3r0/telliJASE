@@ -3,7 +3,16 @@
 from __future__ import annotations
 
 from PySide6.QtCore import Qt, Signal
-from PySide6.QtWidgets import QCheckBox, QGroupBox, QLabel, QSlider, QVBoxLayout, QWidget
+from PySide6.QtWidgets import (
+    QCheckBox,
+    QGroupBox,
+    QHBoxLayout,
+    QLabel,
+    QLineEdit,
+    QSlider,
+    QVBoxLayout,
+    QWidget,
+)
 
 
 class ChannelControl(QGroupBox):
@@ -30,18 +39,29 @@ class ChannelControl(QGroupBox):
 
         # Frequency slider (27 Hz - 7000 Hz musical range)
         self.freq_label = QLabel("Frequency: 440 Hz")
+        layout.addWidget(self.freq_label)
+
+        # Horizontal layout with slider and text input
+        freq_row = QHBoxLayout()
         self.freq_slider = QSlider(Qt.Horizontal)
         self.freq_slider.setRange(55, 2000)  # Usable musical range
         self.freq_slider.setValue(440 + channel_index * 110)
-        self.freq_slider.valueChanged.connect(self._on_freq_changed)
-        layout.addWidget(self.freq_label)
-        layout.addWidget(self.freq_slider)
+        self.freq_slider.valueChanged.connect(self._on_freq_slider_changed)
+
+        self.freq_input = QLineEdit()
+        self.freq_input.setMaximumWidth(70)
+        self.freq_input.setText(str(440 + channel_index * 110))
+        self.freq_input.editingFinished.connect(self._on_freq_input_changed)
+
+        freq_row.addWidget(self.freq_slider)
+        freq_row.addWidget(self.freq_input)
+        layout.addLayout(freq_row)
 
         # Volume slider (0-15)
-        self.vol_label = QLabel("Volume: 12")
+        self.vol_label = QLabel("Volume: 7")
         self.vol_slider = QSlider(Qt.Horizontal)
         self.vol_slider.setRange(0, 15)
-        self.vol_slider.setValue(12 - channel_index * 2)
+        self.vol_slider.setValue(7)
         self.vol_slider.valueChanged.connect(self._on_vol_changed)
         layout.addWidget(self.vol_label)
         layout.addWidget(self.vol_slider)
@@ -59,10 +79,29 @@ class ChannelControl(QGroupBox):
 
         layout.addStretch()
 
-    def _on_freq_changed(self, value: int) -> None:
-        """Frequency slider moved - emit high-level signal."""
+    def _on_freq_slider_changed(self, value: int) -> None:
+        """Frequency slider moved - update text input and emit signal."""
         self.freq_label.setText(f"Frequency: {value} Hz")
+        self.freq_input.blockSignals(True)
+        self.freq_input.setText(str(value))
+        self.freq_input.blockSignals(False)
         self.frequency_changed.emit(float(value))
+
+    def _on_freq_input_changed(self) -> None:
+        """Frequency text input changed - update slider and emit signal."""
+        try:
+            value = int(self.freq_input.text())
+            # Clamp to slider range
+            value = max(self.freq_slider.minimum(), min(self.freq_slider.maximum(), value))
+            self.freq_slider.blockSignals(True)
+            self.freq_slider.setValue(value)
+            self.freq_slider.blockSignals(False)
+            self.freq_label.setText(f"Frequency: {value} Hz")
+            self.freq_input.setText(str(value))  # Show clamped value
+            self.frequency_changed.emit(float(value))
+        except ValueError:
+            # Invalid input - restore from slider
+            self.freq_input.setText(str(self.freq_slider.value()))
 
     def _on_vol_changed(self, value: int) -> None:
         """Volume slider moved - emit high-level signal."""
@@ -80,22 +119,25 @@ class ChannelControl(QGroupBox):
         """
         # Block signals to avoid feedback loop
         self.freq_slider.blockSignals(True)
+        self.freq_input.blockSignals(True)
         self.vol_slider.blockSignals(True)
         self.tone_check.blockSignals(True)
         self.noise_check.blockSignals(True)
 
         self.freq_slider.setValue(int(frequency))
+        self.freq_input.setText(str(int(frequency)))
         self.vol_slider.setValue(volume)
         self.tone_check.setChecked(tone_enabled)
         self.noise_check.setChecked(noise_enabled)
 
         self.freq_slider.blockSignals(False)
+        self.freq_input.blockSignals(False)
         self.vol_slider.blockSignals(False)
         self.tone_check.blockSignals(False)
         self.noise_check.blockSignals(False)
 
         # Update labels
-        self._on_freq_changed(int(frequency))
+        self.freq_label.setText(f"Frequency: {int(frequency)} Hz")
         self._on_vol_changed(volume)
 
     def emit_state(self) -> None:
