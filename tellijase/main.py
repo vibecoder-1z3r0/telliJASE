@@ -486,7 +486,7 @@ class MainWindow(QMainWindow):
         vol_a = regs.get('R10', 0) & 0x0F
         tone_a = "Tone" if not (r7 & 0x01) else ""
         noise_a = "Noise" if not (r7 & 0x08) else ""
-        mix_a = "+".join(filter(None, [tone_a, noise_a])) or "MUTE"
+        mix_a = "+".join(filter(None, [tone_a, noise_a])) or "NONE"
 
         output_lines.append(f"Channel A: {freq_a:6.1f} Hz (period={period_a})")
         output_lines.append(f"  Volume: {vol_a:2d}/15")
@@ -499,7 +499,7 @@ class MainWindow(QMainWindow):
         vol_b = regs.get('R11', 0) & 0x0F
         tone_b = "Tone" if not (r7 & 0x02) else ""
         noise_b = "Noise" if not (r7 & 0x10) else ""
-        mix_b = "+".join(filter(None, [tone_b, noise_b])) or "MUTE"
+        mix_b = "+".join(filter(None, [tone_b, noise_b])) or "NONE"
 
         output_lines.append(f"Channel B: {freq_b:6.1f} Hz (period={period_b})")
         output_lines.append(f"  Volume: {vol_b:2d}/15")
@@ -512,7 +512,7 @@ class MainWindow(QMainWindow):
         vol_c = regs.get('R12', 0) & 0x0F
         tone_c = "Tone" if not (r7 & 0x04) else ""
         noise_c = "Noise" if not (r7 & 0x20) else ""
-        mix_c = "+".join(filter(None, [tone_c, noise_c])) or "MUTE"
+        mix_c = "+".join(filter(None, [tone_c, noise_c])) or "NONE"
 
         output_lines.append(f"Channel C: {freq_c:6.1f} Hz (period={period_c})")
         output_lines.append(f"  Volume: {vol_c:2d}/15")
@@ -525,7 +525,7 @@ class MainWindow(QMainWindow):
             noise_freq = period_to_frequency(noise_period)
             output_lines.append(f"Noise: {noise_freq:6.1f} Hz (period={noise_period})")
         else:
-            output_lines.append("Noise: MUTE")
+            output_lines.append("Noise: OFF")
         output_lines.append("")
 
         # Mixer decode (R7 in binary for clarity)
