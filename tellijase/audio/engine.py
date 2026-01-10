@@ -4,7 +4,11 @@ from __future__ import annotations
 
 import numpy as np
 
-from tellijase.psg.utils import CLOCK_HZ, frequency_to_period, period_to_frequency, volume_to_amplitude
+from tellijase.psg.utils import (
+    frequency_to_period,
+    period_to_frequency,
+    volume_to_amplitude,
+)
 
 
 class AY38914Synth:

@@ -5,7 +5,6 @@ from __future__ import annotations
 import logging
 import threading
 import time
-from typing import Optional
 
 import numpy as np
 
@@ -70,7 +69,10 @@ class PygamePSGPlayer:
             # Reserve a channel for our audio
             pygame.mixer.set_num_channels(1)
             self.channel = pygame.mixer.Channel(0)
-            logger.info(f"PygamePSGPlayer initialized: {sample_rate}Hz, {buffer_size} samples (pygame {PYGAME_VERSION})")
+            logger.info(
+                f"PygamePSGPlayer initialized: {sample_rate}Hz, "
+                f"{buffer_size} samples (pygame {PYGAME_VERSION})"
+            )
         except Exception as e:
             logger.error(f"Failed to initialize pygame mixer: {e}")
             self.available = False

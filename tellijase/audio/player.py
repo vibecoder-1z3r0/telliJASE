@@ -25,7 +25,11 @@ class JamAudioSettings:
 class JamAudioPlayer(QObject):
     """Wraps QAudioSink to play rendered AY samples."""
 
-    def __init__(self, parent: QObject | None = None, settings: JamAudioSettings | None = None) -> None:
+    def __init__(
+        self,
+        parent: QObject | None = None,
+        settings: JamAudioSettings | None = None,
+    ) -> None:
         super().__init__(parent)
         self.settings = settings or JamAudioSettings()
         self.synth = AY38914Synth(sample_rate=self.settings.sample_rate)
