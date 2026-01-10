@@ -2,7 +2,7 @@
 
 from __future__ import annotations
 
-from PySide6.QtCore import Qt, Signal, QRect
+from PySide6.QtCore import Qt, Signal
 from PySide6.QtGui import QPainter, QColor, QPen
 from PySide6.QtWidgets import (
     QWidget,
@@ -271,9 +271,7 @@ class FrameTimeline(QWidget):
             layout.addWidget(track)
             self.tracks.append(track)
 
-    def set_frame_data(
-        self, track_index: int, frame_number: int, data: dict | None | bool
-    ) -> None:
+    def set_frame_data(self, track_index: int, frame_number: int, data: dict | None | bool) -> None:
         """Set frame data for visualization.
 
         Args:
@@ -302,7 +300,6 @@ class FrameTimeline(QWidget):
 
     def keyPressEvent(self, event) -> None:
         """Handle keyboard shortcuts for copy/paste."""
-        from PySide6.QtCore import Qt as QtCore_Qt
         from PySide6.QtGui import QKeySequence
 
         if event.matches(QKeySequence.Copy):  # Ctrl+C
@@ -430,12 +427,12 @@ class FrameEditor(QGroupBox):
         data = {
             "frequency": self.freq_spin.value() if self.freq_spin.isEnabled() else None,
             "volume": self.vol_spin.value(),
-            "tone_enabled": self.btn_tone_enable.isChecked()
-            if self.btn_tone_enable.isEnabled()
-            else None,
-            "noise_enabled": self.btn_noise_enable.isChecked()
-            if self.btn_noise_enable.isEnabled()
-            else None,
+            "tone_enabled": (
+                self.btn_tone_enable.isChecked() if self.btn_tone_enable.isEnabled() else None
+            ),
+            "noise_enabled": (
+                self.btn_noise_enable.isChecked() if self.btn_noise_enable.isEnabled() else None
+            ),
         }
 
         self.frame_applied.emit(self.current_track, self.current_frame, data)

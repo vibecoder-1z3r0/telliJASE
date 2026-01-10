@@ -91,6 +91,32 @@ class LivePSGStream:
             # Fill with silence on error
             outdata.fill(0)
 
+    def _find_output_device(self):
+        """Find a valid output audio device.
+
+        Returns:
+            Device ID or None to let sounddevice choose
+        """
+        device = None
+        try:
+            # Try to get default output device
+            default_out = sd.default.device[1]
+            if default_out is not None and default_out >= 0:
+                device = default_out
+        except (AttributeError, IndexError, TypeError):
+            pass
+
+        # If no valid default, find first available output device
+        if device is None:
+            devices = sd.query_devices()
+            for idx, dev in enumerate(devices):
+                if dev["max_output_channels"] > 0:
+                    device = idx
+                    logger.info(f"Using first available output device: {dev['name']}")
+                    break
+
+        return device
+
     def start(self) -> bool:
         """Start continuous audio playback.
 
@@ -106,25 +132,7 @@ class LivePSGStream:
             return True
 
         try:
-            # Find a valid output device
-            device = None
-            try:
-                # Try to get default output device
-                default_out = sd.default.device[1]
-                if default_out is not None and default_out >= 0:
-                    device = default_out
-            except (AttributeError, IndexError, TypeError):
-                pass
-
-            # If no valid default, find first available output device
-            if device is None:
-                devices = sd.query_devices()
-                for idx, dev in enumerate(devices):
-                    if dev['max_output_channels'] > 0:
-                        device = idx
-                        logger.info(f"Using first available output device: {dev['name']}")
-                        break
-
+            device = self._find_output_device()
             self.stream = sd.OutputStream(
                 device=device,  # None is ok - lets sounddevice choose
                 channels=1,

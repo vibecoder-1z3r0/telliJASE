@@ -1,5 +1,3 @@
-from pathlib import Path
-
 from tellijase.models import PSGState
 from tellijase.storage import (
     JamSession,
@@ -107,7 +105,24 @@ def test_jam_session_with_all_registers(tmp_path):
     assert loaded_session.name == "Full Session"
 
     # Check all 16 registers
-    for reg in ["R0", "R1", "R2", "R3", "R4", "R5", "R6", "R7", "R8", "R9", "R10", "R11", "R12", "R13", "R14", "R15"]:
+    for reg in [
+        "R0",
+        "R1",
+        "R2",
+        "R3",
+        "R4",
+        "R5",
+        "R6",
+        "R7",
+        "R8",
+        "R9",
+        "R10",
+        "R11",
+        "R12",
+        "R13",
+        "R14",
+        "R15",
+    ]:
         assert loaded_session.registers[reg] == registers[reg], f"Register {reg} mismatch"
 
 
