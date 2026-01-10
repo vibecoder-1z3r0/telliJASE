@@ -174,14 +174,14 @@ class MainWindow(QMainWindow):
         noise_layout = QVBoxLayout(noise_group)
         noise_layout.setContentsMargins(20, 10, 20, 10)
 
-        self.noise_label = QLabel("Period: 0 (OFF)")
+        self.noise_label = QLabel("Period: 1 (~111861 Hz)")
         noise_layout.addWidget(self.noise_label)
 
         # Horizontal layout with slider and text input
         noise_row = QHBoxLayout()
         self.noise_slider = QSlider(Qt.Horizontal)
         self.noise_slider.setRange(0, 31)  # R6 is 5 bits (0-31)
-        self.noise_slider.setValue(0)
+        self.noise_slider.setValue(1)  # Start at 1 (ready to use, not OFF)
         self.noise_slider.setTickPosition(QSlider.TicksBelow)
         self.noise_slider.setTickInterval(1)  # Tick for each period value
         self.noise_slider.setPageStep(1)  # Click on track moves by 1
@@ -189,7 +189,7 @@ class MainWindow(QMainWindow):
 
         self.noise_input = QLineEdit()
         self.noise_input.setMaximumWidth(70)
-        self.noise_input.setText("0")
+        self.noise_input.setText("1")
         self.noise_input.editingFinished.connect(self._on_noise_input_changed)
 
         noise_row.addWidget(self.noise_slider)
