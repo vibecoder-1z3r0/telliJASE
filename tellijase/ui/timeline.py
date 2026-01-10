@@ -42,65 +42,65 @@ class FrameCell(QWidget):
 
         # Main layout
         layout = QGridLayout(self)
-        layout.setSpacing(2)
-        layout.setContentsMargins(4, 4, 4, 4)
+        layout.setSpacing(1)
+        layout.setContentsMargins(2, 2, 2, 2)
 
         # Row 1: [Frequency] Hz
         self.freq_spin = QSpinBox()
         self.freq_spin.setRange(27, 2000)
         self.freq_spin.setValue(440)
-        self.freq_spin.setFixedWidth(60)
+        self.freq_spin.setFixedWidth(55)
         self.freq_spin.valueChanged.connect(self._on_data_changed)
         hz_label = QLabel("Hz")
-        hz_label.setStyleSheet("color: #ccc; font-size: 9px;")
-        layout.addWidget(self.freq_spin, 0, 0)
-        layout.addWidget(hz_label, 0, 1)
+        hz_label.setStyleSheet("color: #ccc; font-size: 8px;")
+        layout.addWidget(self.freq_spin, 0, 0, 1, 2)  # Span 2 columns
+        layout.addWidget(hz_label, 0, 2)
 
         # Row 2: V [Volume] [Deactivate]
         v_label = QLabel("V")
-        v_label.setStyleSheet("color: #ccc; font-size: 9px;")
+        v_label.setStyleSheet("color: #ccc; font-size: 8px;")
         self.vol_spin = QSpinBox()
         self.vol_spin.setRange(0, 15)
         self.vol_spin.setValue(10)
-        self.vol_spin.setFixedWidth(40)
+        self.vol_spin.setFixedWidth(35)
         self.vol_spin.valueChanged.connect(self._on_data_changed)
 
         self.btn_deactivate = QPushButton("D")
         self.btn_deactivate.setCheckable(True)
-        self.btn_deactivate.setFixedSize(25, 20)
+        self.btn_deactivate.setFixedSize(22, 18)
         self.btn_deactivate.toggled.connect(self._on_deactivate_toggled)
 
-        layout.addWidget(v_label, 1, 0, Qt.AlignLeft)
-        layout.addWidget(self.vol_spin, 1, 0, Qt.AlignRight)
-        layout.addWidget(self.btn_deactivate, 1, 1)
+        layout.addWidget(v_label, 1, 0)
+        layout.addWidget(self.vol_spin, 1, 1)
+        layout.addWidget(self.btn_deactivate, 1, 2)
 
         # Row 3: [Tone] [Noise]
         self.btn_tone = QPushButton("T")
         self.btn_tone.setCheckable(True)
         self.btn_tone.setChecked(True)
-        self.btn_tone.setFixedSize(35, 20)
+        self.btn_tone.setFixedSize(30, 18)
         self.btn_tone.toggled.connect(self._on_tone_toggled)
 
         self.btn_noise = QPushButton("N")
         self.btn_noise.setCheckable(True)
         self.btn_noise.setChecked(False)
-        self.btn_noise.setFixedSize(35, 20)
+        self.btn_noise.setFixedSize(30, 18)
         self.btn_noise.toggled.connect(self._on_noise_toggled)
 
-        layout.addWidget(self.btn_tone, 2, 0)
-        layout.addWidget(self.btn_noise, 2, 1)
+        layout.addWidget(self.btn_tone, 2, 0, 1, 2)  # Span 2 columns
+        layout.addWidget(self.btn_noise, 2, 2)
 
         # Row 4: Dur [duration]
-        dur_label = QLabel("Dur:")
-        dur_label.setStyleSheet("color: #ccc; font-size: 9px;")
+        dur_label = QLabel("Dur")
+        dur_label.setStyleSheet("color: #ccc; font-size: 8px;")
         self.dur_spin = QSpinBox()
         self.dur_spin.setRange(1, 300)  # 1-300 frames (up to 5 seconds at 60 FPS)
         self.dur_spin.setValue(1)
-        self.dur_spin.setFixedWidth(50)
+        self.dur_spin.setFixedWidth(35)
         self.dur_spin.valueChanged.connect(self._on_duration_changed)
 
-        layout.addWidget(dur_label, 3, 0, Qt.AlignLeft)
-        layout.addWidget(self.dur_spin, 3, 0, Qt.AlignRight)
+        layout.addWidget(dur_label, 3, 0)
+        layout.addWidget(self.dur_spin, 3, 1, 1, 2)  # Span 2 columns
 
         # Initially disabled until frame is activated
         self._set_widgets_enabled(False)
@@ -346,7 +346,7 @@ class TrackTimeline(QGroupBox):
         # Frame cells container (horizontal scrollable)
         cells_container = QWidget()
         cells_layout = QHBoxLayout(cells_container)
-        cells_layout.setSpacing(2)
+        cells_layout.setSpacing(4)  # Increased spacing between cells
         cells_layout.setContentsMargins(0, 0, 0, 0)
 
         for frame_num in range(num_frames):
@@ -488,7 +488,7 @@ class FrameTimeline(QWidget):
 
         marker_interval = 60  # 1 second intervals
         cell_width = 120  # Updated to match new FrameCell width
-        cell_spacing = 2  # Match cells_layout spacing
+        cell_spacing = 4  # Match cells_layout spacing
         for i in range(0, self.num_frames, marker_interval):
             # Show time in seconds
             seconds = i // 60
