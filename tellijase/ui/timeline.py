@@ -2,7 +2,8 @@
 
 from __future__ import annotations
 
-from PySide6.QtCore import Qt, Signal
+from PySide6.QtCore import Qt, Signal, QRect
+from PySide6.QtGui import QPainter, QColor, QPen
 from PySide6.QtWidgets import (
     QWidget,
     QVBoxLayout,
@@ -29,18 +30,88 @@ class FrameCell(QWidget):
         self.track_index = track_index
         self.frame_number = frame_number
         self.is_filled = False
+        self.frame_data = None  # Store actual frame data for visualization
+        self.is_highlighted = False  # Playback position highlight
         self.setFixedSize(40, 24)
-        self.setStyleSheet("FrameCell { border: 1px solid #555; background-color: #2a2a2a; }")
+
+    def set_highlighted(self, highlighted: bool) -> None:
+        """Set playback position highlight."""
+        self.is_highlighted = highlighted
+        self.update()
+
+    def set_data(self, data: dict | None) -> None:
+        """Set frame data and update visualization.
+
+        Args:
+            data: Frame data dict with frequency, volume, tone_enabled, noise_enabled
+                  or None for empty frame
+        """
+        self.frame_data = data
+        self.is_filled = data is not None
+        self.update()  # Trigger repaint
 
     def set_filled(self, filled: bool) -> None:
-        """Mark this cell as filled (has event data)."""
+        """Mark this cell as filled (has event data) - for backward compatibility."""
+        if not filled:
+            self.frame_data = None
         self.is_filled = filled
-        if filled:
-            self.setStyleSheet(
-                "FrameCell { border: 1px solid #00aaff; " "background-color: #004466; }"
-            )
+        self.update()
+
+    def paintEvent(self, event) -> None:
+        """Paint the cell with visual representation of the data."""
+        painter = QPainter(self)
+        painter.setRenderHint(QPainter.Antialiasing)
+
+        # Background
+        if self.is_filled and self.frame_data:
+            painter.fillRect(self.rect(), QColor(30, 30, 30))
         else:
-            self.setStyleSheet("FrameCell { border: 1px solid #555; background-color: #2a2a2a; }")
+            painter.fillRect(self.rect(), QColor(42, 42, 42))
+
+        # Border (highlight playback position with bright border)
+        if self.is_highlighted:
+            painter.setPen(QPen(QColor(255, 255, 0), 3))  # Yellow highlight
+        elif self.is_filled:
+            painter.setPen(QPen(QColor(0, 170, 255), 1))
+        else:
+            painter.setPen(QPen(QColor(85, 85, 85), 1))
+        painter.drawRect(self.rect().adjusted(0, 0, -1, -1))
+
+        # Draw data visualization if filled
+        if self.is_filled and self.frame_data:
+            self._draw_data_visualization(painter)
+
+    def _draw_data_visualization(self, painter: QPainter) -> None:
+        """Draw visual representation of frame data.
+
+        Shows:
+        - Volume as bar height (vertical bar)
+        - Tone/Noise as color (green=tone, orange=noise, yellow=both)
+        """
+        volume = self.frame_data.get("volume", 0)
+        tone_enabled = self.frame_data.get("tone_enabled", False)
+        noise_enabled = self.frame_data.get("noise_enabled", False)
+
+        # Determine color based on tone/noise
+        if tone_enabled and noise_enabled:
+            color = QColor(255, 200, 0)  # Yellow for both
+        elif tone_enabled:
+            color = QColor(0, 200, 100)  # Green for tone
+        elif noise_enabled:
+            color = QColor(255, 120, 0)  # Orange for noise
+        else:
+            color = QColor(100, 100, 100)  # Gray for muted
+
+        # Draw volume bar (vertical, from bottom)
+        if volume > 0:
+            bar_height = int((volume / 15.0) * (self.height() - 4))
+            bar_rect = QRect(
+                2,
+                self.height() - bar_height - 2,
+                self.width() - 4,
+                bar_height
+            )
+            painter.fillRect(bar_rect, color)
 
     def mousePressEvent(self, event) -> None:
         """Handle click on this cell."""
@@ -57,7 +128,7 @@ class TrackTimeline(QWidget):
         self,
         track_index: int,
         track_name: str,
-        num_frames: int = 128,
+        num_frames: int = 1800,
         parent: QWidget | None = None,
     ) -> None:
         super().__init__(parent)
@@ -66,9 +137,15 @@ class TrackTimeline(QWidget):
         self.num_frames = num_frames
         self.cells: list[FrameCell] = []
 
+        # Style the track with background and border
+        self.setStyleSheet(
+            "TrackTimeline { background-color: #333; border: 1px solid #555; "
+            "border-radius: 3px; margin: 2px; }"
+        )
+
         layout = QHBoxLayout(self)
         layout.setSpacing(0)
-        layout.setContentsMargins(0, 0, 0, 0)
+        layout.setContentsMargins(4, 4, 4, 4)
 
         # Track label (fixed width)
         label = QLabel(track_name)
@@ -97,6 +174,16 @@ class TrackTimeline(QWidget):
         if 0 <= frame_number < len(self.cells):
             self.cells[frame_number].set_filled(filled)
 
+    def set_frame_data(self, frame_number: int, data: dict | None) -> None:
+        """Set frame data with visualization.
+
+        Args:
+            frame_number: Frame index
+            data: Frame data dict or None for empty
+        """
+        if 0 <= frame_number < len(self.cells):
+            self.cells[frame_number].set_data(data)
+
 
 class FrameTimeline(QWidget):
     """Complete timeline view with all tracks."""
@@ -105,7 +192,7 @@ class FrameTimeline(QWidget):
 
     def __init__(self, parent: QWidget | None = None) -> None:
         super().__init__(parent)
-        self.num_frames = 128
+        self.num_frames = 1800  # 30 seconds at 60 FPS
         self.tracks: list[TrackTimeline] = []
 
         layout = QVBoxLayout(self)
@@ -118,15 +205,18 @@ class FrameTimeline(QWidget):
         header_label.setFixedWidth(80)  # Match track label width
         header_row.addWidget(header_label)
 
-        # Frame number markers (every 16 frames)
+        # Frame number markers (every 60 frames = 1 second at 60 FPS)
         frame_markers = QWidget()
         frame_markers_layout = QHBoxLayout(frame_markers)
         frame_markers_layout.setSpacing(0)
         frame_markers_layout.setContentsMargins(0, 0, 0, 0)
 
-        for i in range(0, self.num_frames, 16):
-            marker = QLabel(f"{i}")
-            marker.setFixedWidth(40 * 16)  # Span 16 cells
+        marker_interval = 60  # 1 second intervals
+        for i in range(0, self.num_frames, marker_interval):
+            # Show time in seconds
+            seconds = i // 60
+            marker = QLabel(f"{seconds}s")
+            marker.setFixedWidth(40 * marker_interval)  # Span interval
             marker.setStyleSheet("color: #888; font-size: 9px;")
             frame_markers_layout.addWidget(marker)
 
@@ -142,10 +232,34 @@ class FrameTimeline(QWidget):
             layout.addWidget(track)
             self.tracks.append(track)
 
-    def set_frame_data(self, track_index: int, frame_number: int, filled: bool) -> None:
-        """Set whether a frame has data or not."""
+    def set_frame_data(
+        self, track_index: int, frame_number: int, data: dict | None | bool
+    ) -> None:
+        """Set frame data for visualization.
+
+        Args:
+            track_index: Track index (0-4)
+            frame_number: Frame number (0-127)
+            data: Frame data dict for visualization, None for empty,
+                  or bool for backward compatibility (True=filled, False=empty)
+        """
         if 0 <= track_index < len(self.tracks):
-            self.tracks[track_index].set_frame_filled(frame_number, filled)
+            # Handle backward compatibility with bool
+            if isinstance(data, bool):
+                self.tracks[track_index].set_frame_filled(frame_number, data)
+            else:
+                # Pass actual data for visualization
+                self.tracks[track_index].set_frame_data(frame_number, data)
+
+    def set_playback_position(self, frame_number: int) -> None:
+        """Highlight a specific frame across all tracks for playback position.
+
+        Args:
+            frame_number: Frame number to highlight (0-127), or -1 to clear all
+        """
+        for track in self.tracks:
+            for idx, cell in enumerate(track.cells):
+                cell.set_highlighted(idx == frame_number)
 
 
 class FrameEditor(QGroupBox):

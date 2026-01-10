@@ -21,6 +21,8 @@ REGISTER_KEYS = [
     "R11",
     "R12",
     "R13",
+    "R14",  # Envelope period high byte
+    "R15",  # Envelope shape
 ]
 
 CHANNEL_IDS = ("A", "B", "C", "N")
