@@ -369,6 +369,7 @@ class MainWindow(QMainWindow):
 
         self.timeline = FrameTimeline()
         self.timeline.frame_clicked.connect(self._on_frame_clicked)
+        self.timeline.data_changed.connect(self._on_frame_applied)  # Inline editing
         self.timeline.frames_copied.connect(self._on_frames_copied)
         self.timeline.frames_pasted.connect(self._on_frames_pasted)
         scroll.setWidget(self.timeline)
@@ -714,7 +715,7 @@ class MainWindow(QMainWindow):
 
                 event = TrackEvent(
                     frame=frame_num,
-                    duration=1,  # Default 1 frame duration
+                    duration=data.get("duration", 1),  # Get duration from frame data
                     period=period,
                     volume=data.get("volume"),
                     noise_period=None,  # Handled by noise track
