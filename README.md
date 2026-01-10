@@ -2,7 +2,37 @@
 
 ## Just A Sound Editor for Intellivision
 Explore Tone, Noise, and Time on Intellivision through frame-based sound design for the AY-3-8914.
-(JASE pronounced like “jazz”)
+(JASE pronounced like "jazz")
+
+## Quick Start
+
+```bash
+# Clone the repository
+git clone https://github.com/vibecoder-1z3r0/telliJASE.git
+cd telliJASE
+
+# Create and activate virtual environment
+python3 -m venv .venv
+source .venv/bin/activate  # On Windows: .venv\Scripts\activate
+
+# Install dependencies
+pip install -r requirements.txt
+
+# Launch the application
+python -m tellijase
+```
+
+**First-time JAM mode:**
+1. Three channels (A, B, C) start with a power chord (110, 220, 330 Hz)
+2. Adjust frequency sliders or type values directly
+3. Use vertical volume faders for mixing
+4. Toggle Tone/Noise buttons (green = active)
+5. Hit MUTE to silence a channel (red = muted)
+
+**Audio on WSL/Linux:** If you don't hear sound, install PortAudio:
+```bash
+sudo apt-get install libportaudio2 portaudio19-dev
+```
 
 ## License
 telliJASE is dual-licensed:
