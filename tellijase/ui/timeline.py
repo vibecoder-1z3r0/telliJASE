@@ -223,6 +223,7 @@ class FrameTimeline(QWidget):
     """Complete timeline view with all tracks."""
 
     frame_clicked = Signal(int, int)  # (track_index, frame_number)
+    frames_copied = Signal(int)  # (count)
     frames_pasted = Signal(list)  # [(track_index, frame_number, data), ...]
 
     def __init__(self, parent: QWidget | None = None) -> None:
@@ -320,6 +321,10 @@ class FrameTimeline(QWidget):
             for cell in track.cells:
                 if cell.is_selected and cell.frame_data:
                     self.clipboard.append((track_idx, cell.frame_number, cell.frame_data.copy()))
+
+        # Emit signal with count for status bar feedback
+        if self.clipboard:
+            self.frames_copied.emit(len(self.clipboard))
 
     def _paste(self) -> None:
         """Paste clipboard data - emit signal for main window to handle."""
