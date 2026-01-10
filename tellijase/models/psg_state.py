@@ -20,7 +20,7 @@ class PSGState:
     channel_b: PSGChannel = field(default_factory=PSGChannel)
     channel_c: PSGChannel = field(default_factory=PSGChannel)
 
-    noise_period: int = 0           # R6 (0-31)
+    noise_period: int = 1           # R6 (0-31) - Start at 1 so noise is ready to use
     envelope_period: int = 0        # R13/R14 (0-65535)
     envelope_shape: int = 0         # R15 (0-15)
 
