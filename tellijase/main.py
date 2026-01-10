@@ -834,15 +834,37 @@ class MainWindow(QMainWindow):
     def _on_frame_play(self) -> None:
         """Start frame playback."""
         if not self.audio_available:
-            QMessageBox.warning(self, "Audio Unavailable", "Cannot play without audio backend")
+            self._warn_audio_missing()
             return
 
-        # Start audio stream if not already playing
-        if self.audio_stream and not self.audio_stream.is_playing():
-            if not self.audio_stream.start():
-                QMessageBox.warning(self, "Playback Failed", "Failed to start audio stream")
-                return
+        # Try current backend (same logic as JAM mode)
+        if self.audio_stream and self.audio_stream.start():
+            self._start_frame_playback()
+            return
 
+        # Current backend failed - try fallback to pygame
+        if self.audio_backend == "sounddevice" and PYGAME_AVAILABLE:
+            logger.warning("sounddevice failed to start, falling back to pygame")
+            try:
+                self.audio_stream = PygamePSGPlayer(self.current_state)
+                self.audio_backend = "pygame"
+                if self.audio_stream.start():
+                    self._start_frame_playback()
+                    self.statusBar().showMessage("Playing with pygame (fallback)...", 0)
+                    return
+            except Exception as e:
+                logger.error(f"pygame fallback failed: {e}")
+
+        # All backends failed
+        QMessageBox.warning(
+            self,
+            "Playback Failed",
+            f"Failed to start audio with {self.audio_backend}.\n\n"
+            "Check console for errors. Audio may not be available in this environment.",
+        )
+
+    def _start_frame_playback(self) -> None:
+        """Start the frame playback timer (separated for reuse)."""
         # Create playback timer if needed
         if self.playback_timer is None:
             self.playback_timer = QTimer(self)
@@ -946,14 +968,8 @@ class MainWindow(QMainWindow):
         """
         if data.get("frequency") is not None:
             channel.frequency = data["frequency"]
-
-        # Apply volume, respecting mute flag
         if data.get("volume") is not None:
-            if data.get("muted", False):
-                channel.volume = 0  # Mute overrides volume
-            else:
-                channel.volume = data["volume"]
-
+            channel.volume = data["volume"]
         if data.get("tone_enabled") is not None:
             channel.tone_enabled = data["tone_enabled"]
         if data.get("noise_enabled") is not None:
