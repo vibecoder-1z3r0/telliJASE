@@ -946,8 +946,14 @@ class MainWindow(QMainWindow):
         """
         if data.get("frequency") is not None:
             channel.frequency = data["frequency"]
+
+        # Apply volume, respecting mute flag
         if data.get("volume") is not None:
-            channel.volume = data["volume"]
+            if data.get("muted", False):
+                channel.volume = 0  # Mute overrides volume
+            else:
+                channel.volume = data["volume"]
+
         if data.get("tone_enabled") is not None:
             channel.tone_enabled = data["tone_enabled"]
         if data.get("noise_enabled") is not None:
