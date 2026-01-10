@@ -32,7 +32,7 @@ class FrameCell(QWidget):
         self.is_filled = False
         self.frame_data = None  # Store actual frame data for visualization
         self.is_highlighted = False  # Playback position highlight
-        self.setFixedSize(40, 24)
+        self.setFixedSize(70, 55)  # Larger size for text labels
 
     def set_highlighted(self, highlighted: bool) -> None:
         """Set playback position highlight."""
@@ -82,36 +82,48 @@ class FrameCell(QWidget):
             self._draw_data_visualization(painter)
 
     def _draw_data_visualization(self, painter: QPainter) -> None:
-        """Draw visual representation of frame data.
+        """Draw text representation of frame data.
 
-        Shows:
-        - Volume as bar height (vertical bar)
-        - Tone/Noise as color (green=tone, orange=noise, yellow=both)
+        Layout:
+        Line 1: [freq] Hz
+        Line 2: V [vol] [M]
+        Line 3: [T] [N]
         """
+        from PySide6.QtGui import QFont
+
+        frequency = self.frame_data.get("frequency")
         volume = self.frame_data.get("volume", 0)
         tone_enabled = self.frame_data.get("tone_enabled", False)
         noise_enabled = self.frame_data.get("noise_enabled", False)
 
-        # Determine color based on tone/noise
-        if tone_enabled and noise_enabled:
-            color = QColor(255, 200, 0)  # Yellow for both
-        elif tone_enabled:
-            color = QColor(0, 200, 100)  # Green for tone
-        elif noise_enabled:
-            color = QColor(255, 120, 0)  # Orange for noise
-        else:
-            color = QColor(100, 100, 100)  # Gray for muted
+        # Set up small font for compact display
+        font = QFont("Monospace", 7)
+        painter.setFont(font)
+        painter.setPen(QColor(220, 220, 220))  # Light gray text
 
-        # Draw volume bar (vertical, from bottom)
-        if volume > 0:
-            bar_height = int((volume / 15.0) * (self.height() - 4))
-            bar_rect = QRect(
-                2,
-                self.height() - bar_height - 2,
-                self.width() - 4,
-                bar_height
-            )
-            painter.fillRect(bar_rect, color)
+        y_offset = 12  # Start position
+
+        # Line 1: Frequency (only for tone channels)
+        if frequency is not None:
+            freq_text = f"{int(frequency)}Hz"
+            painter.drawText(4, y_offset, freq_text)
+            y_offset += 14
+
+        # Line 2: Volume
+        vol_text = f"V:{volume}"
+        painter.drawText(4, y_offset, vol_text)
+        y_offset += 14
+
+        # Line 3: Tone/Noise indicators
+        x_pos = 4
+        if tone_enabled:
+            painter.setPen(QColor(0, 255, 100))  # Green for tone
+            painter.drawText(x_pos, y_offset, "T")
+            x_pos += 16
+
+        if noise_enabled:
+            painter.setPen(QColor(255, 150, 0))  # Orange for noise
+            painter.drawText(x_pos, y_offset, "N")
 
     def mousePressEvent(self, event) -> None:
         """Handle click on this cell."""
@@ -212,11 +224,12 @@ class FrameTimeline(QWidget):
         frame_markers_layout.setContentsMargins(0, 0, 0, 0)
 
         marker_interval = 60  # 1 second intervals
+        cell_width = 70  # Must match FrameCell width
         for i in range(0, self.num_frames, marker_interval):
             # Show time in seconds
             seconds = i // 60
             marker = QLabel(f"{seconds}s")
-            marker.setFixedWidth(40 * marker_interval)  # Span interval
+            marker.setFixedWidth(cell_width * marker_interval)  # Span interval
             marker.setStyleSheet("color: #888; font-size: 9px;")
             frame_markers_layout.addWidget(marker)
 
