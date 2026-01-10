@@ -106,14 +106,18 @@ class LivePSGStream:
             return True
 
         try:
+            # Get default output device explicitly to avoid device -1 query errors
+            default_device = sd.default.device[1]  # [input, output]
+
             self.stream = sd.OutputStream(
+                device=default_device,
                 channels=1,
                 samplerate=self.sample_rate,
                 callback=self._callback,
                 blocksize=self.block_size,
             )
             self.stream.start()
-            logger.info("Audio stream started")
+            logger.info(f"Audio stream started on device {default_device}")
             return True
 
         except Exception as e:
