@@ -58,8 +58,17 @@ class PSGSynthesizer:
 
         for idx, fine_r, coarse_r, vol_r, tone_bit, noise_bit, phase in channels:
             channel_signal = self._process_channel(
-                idx, fine_r, coarse_r, vol_r, tone_bit, noise_bit,
-                phase, r7, regs, noise, num_samples
+                idx,
+                fine_r,
+                coarse_r,
+                vol_r,
+                tone_bit,
+                noise_bit,
+                phase,
+                r7,
+                regs,
+                noise,
+                num_samples,
             )
             if channel_signal is not None:
                 volume = regs.get(vol_r, 0) & 0x0F
@@ -123,9 +132,7 @@ class PSGSynthesizer:
                 self._update_phase(idx, new_phase)
 
                 # Digital AND: output is +1 only when BOTH tone and noise are +1
-                return np.where(
-                    (tone > 0) & (noise > 0), 1.0, -1.0
-                ).astype(np.float32)
+                return np.where((tone > 0) & (noise > 0), 1.0, -1.0).astype(np.float32)
             else:
                 return noise
         elif tone_enabled:

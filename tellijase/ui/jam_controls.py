@@ -106,7 +106,8 @@ class ChannelControl(QGroupBox):
         self.tone_check = QPushButton("Tone")
         self.tone_check.setCheckable(True)
         self.tone_check.setChecked(True)
-        self.tone_check.setStyleSheet("""
+        self.tone_check.setStyleSheet(
+            """
             QPushButton {
                 background-color: palette(button);
                 border: 1px solid palette(mid);
@@ -120,14 +121,16 @@ class ChannelControl(QGroupBox):
             QPushButton:checked:hover {
                 background-color: #4caf50;
             }
-        """)
+        """
+        )
         self.tone_check.toggled.connect(self.tone_enabled_changed)
         left_pane.addWidget(self.tone_check)
 
         self.noise_check = QPushButton("Noise")
         self.noise_check.setCheckable(True)
         self.noise_check.setChecked(False)
-        self.noise_check.setStyleSheet("""
+        self.noise_check.setStyleSheet(
+            """
             QPushButton {
                 background-color: palette(button);
                 border: 1px solid palette(mid);
@@ -141,7 +144,8 @@ class ChannelControl(QGroupBox):
             QPushButton:checked:hover {
                 background-color: #4caf50;
             }
-        """)
+        """
+        )
         self.noise_check.toggled.connect(self.noise_enabled_changed)
         left_pane.addWidget(self.noise_check)
 
@@ -171,7 +175,8 @@ class ChannelControl(QGroupBox):
         self.mute_btn = QPushButton("MUTE")
         self.mute_btn.setCheckable(True)
         self.mute_btn.setMaximumWidth(60)
-        self.mute_btn.setStyleSheet("""
+        self.mute_btn.setStyleSheet(
+            """
             QPushButton {
                 background-color: palette(button);
                 border: 1px solid palette(mid);
@@ -185,7 +190,8 @@ class ChannelControl(QGroupBox):
             QPushButton:checked:hover {
                 background-color: #f44336;
             }
-        """)
+        """
+        )
         self.mute_btn.toggled.connect(self._on_mute_toggled)
         right_pane.addWidget(self.mute_btn, alignment=Qt.AlignCenter)
 

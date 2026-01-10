@@ -66,9 +66,7 @@ class Project:
     @classmethod
     def from_dict(cls, data: dict) -> Project:
         """Deserialize from dict."""
-        snapshots = [
-            JAMSnapshot.from_dict(snap) for snap in data.get("jam_snapshots", [])
-        ]
+        snapshots = [JAMSnapshot.from_dict(snap) for snap in data.get("jam_snapshots", [])]
         return cls(
             name=data.get("name", "Untitled"),
             created=data.get("created", datetime.utcnow().isoformat()),

@@ -10,6 +10,7 @@ import numpy as np
 
 try:
     import pygame.mixer
+
     PYGAME_AVAILABLE = True
     # Detect if using pygame-ce (community edition)
     PYGAME_VERSION = getattr(pygame, "__version__", "unknown")
@@ -129,9 +130,7 @@ class PygamePSGPlayer:
             # Start background thread to continuously regenerate audio
             self.stop_event.clear()
             self.update_thread = threading.Thread(
-                target=self._audio_update_loop,
-                daemon=True,
-                name="PygameAudioUpdate"
+                target=self._audio_update_loop, daemon=True, name="PygameAudioUpdate"
             )
             self.update_thread.start()
 
