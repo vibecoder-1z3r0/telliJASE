@@ -74,9 +74,17 @@ class MainWindow(QMainWindow):
 
         # Frame playback state
         self.playback_timer: Optional[QTimer] = None
-        self.current_frame = 0
+        self.current_frame = 0  # Global playback position (ticks)
         self.is_playing = False
         self.playback_loop = False
+        # Per-channel event tracking for duration support
+        self.channel_playback_state: dict[str, dict] = {
+            "A": {"active_frame": None, "frames_remaining": 0},
+            "B": {"active_frame": None, "frames_remaining": 0},
+            "C": {"active_frame": None, "frames_remaining": 0},
+            "N": {"active_frame": None, "frames_remaining": 0},
+            "E": {"active_frame": None, "frames_remaining": 0},
+        }
 
         # UI widgets
         self.channel_controls: list[ChannelControl] = []
@@ -893,6 +901,11 @@ class MainWindow(QMainWindow):
 
     def _start_frame_playback(self) -> None:
         """Start the frame playback timer (separated for reuse)."""
+        # Reset channel playback state
+        for state in self.channel_playback_state.values():
+            state["active_frame"] = None
+            state["frames_remaining"] = 0
+
         # Create playback timer if needed
         if self.playback_timer is None:
             self.playback_timer = QTimer(self)
@@ -931,6 +944,11 @@ class MainWindow(QMainWindow):
         self.is_playing = False
         self.current_frame = 0
 
+        # Reset channel playback state
+        for state in self.channel_playback_state.values():
+            state["active_frame"] = None
+            state["frames_remaining"] = 0
+
         # Clear playback position highlight
         self.timeline.set_playback_position(-1)
 
@@ -947,43 +965,95 @@ class MainWindow(QMainWindow):
         """Toggle loop mode."""
         self.playback_loop = checked
 
-    def _advance_frame(self) -> None:
-        """Advance to next frame and update PSG state."""
-        # Apply frame data to PSG state for each channel
-        for channel_id, frames in self.timeline_data.items():
-            if self.current_frame in frames:
-                data = frames[self.current_frame]
+    def _load_next_channel_event(self, channel_id: str) -> None:
+        """Load the next event for a channel if needed.
 
-                if channel_id == "A":
-                    self._apply_frame_to_channel(self.current_state.channel_a, data)
-                elif channel_id == "B":
-                    self._apply_frame_to_channel(self.current_state.channel_b, data)
-                elif channel_id == "C":
-                    self._apply_frame_to_channel(self.current_state.channel_c, data)
-                elif channel_id == "N":
-                    # Apply noise period
-                    if data.get("volume") is not None:
-                        # Use volume as noise period for noise track
-                        self.current_state.noise_period = data.get("volume", 1)
+        Args:
+            channel_id: Channel identifier ("A", "B", "C", "N", "E")
+        """
+        state = self.channel_playback_state[channel_id]
+        frames = self.timeline_data[channel_id]
+
+        # Only load if no frames remaining
+        if state["frames_remaining"] > 0:
+            return
+
+        # Find next frame number >= current_frame
+        next_frame = None
+        for frame_num in sorted(frames.keys()):
+            if frame_num >= self.current_frame:
+                next_frame = frame_num
+                break
+
+        if next_frame is None:
+            return
+
+        data = frames[next_frame]
+        duration = data.get("duration", 1)
+
+        # Apply the event data to PSG
+        if channel_id == "A":
+            self._apply_frame_to_channel(self.current_state.channel_a, data)
+        elif channel_id == "B":
+            self._apply_frame_to_channel(self.current_state.channel_b, data)
+        elif channel_id == "C":
+            self._apply_frame_to_channel(self.current_state.channel_c, data)
+        elif channel_id == "N":
+            # Apply noise period
+            if data.get("volume") is not None:
+                self.current_state.noise_period = data.get("volume", 1)
+
+        # Set active frame and remaining duration
+        state["active_frame"] = next_frame
+        state["frames_remaining"] = duration
+
+    def _advance_frame(self) -> None:
+        """Advance to next frame and update PSG state with duration support."""
+        # For each channel, load next event if needed
+        for channel_id in self.timeline_data.keys():
+            self._load_next_channel_event(channel_id)
+
+            # Decrement frames remaining for active events
+            state = self.channel_playback_state[channel_id]
+            if state["frames_remaining"] > 0:
+                state["frames_remaining"] -= 1
 
         # Update register display
         self._update_register_display()
 
-        # Highlight current playback position
-        self.timeline.set_playback_position(self.current_frame)
+        # Highlight current playback position (show the earliest active frame)
+        earliest_frame = min(
+            (
+                s["active_frame"]
+                for s in self.channel_playback_state.values()
+                if s["active_frame"] is not None
+            ),
+            default=self.current_frame,
+        )
+        self.timeline.set_playback_position(earliest_frame)
 
-        # Advance frame counter
+        # Advance global frame counter
         self.current_frame += 1
 
-        # Check for end of timeline
+        # Check for end of timeline (all channels done)
         max_frame = max(
             (max(frames.keys()) if frames else 0 for frames in self.timeline_data.values()),
             default=0,
         )
 
-        if self.current_frame > max_frame:
+        # Check if all channels are past max frame and have no remaining duration
+        all_done = all(
+            state["frames_remaining"] == 0 and state["active_frame"] is None
+            for state in self.channel_playback_state.values()
+        )
+
+        if self.current_frame > max_frame and all_done:
             if self.playback_loop:
                 self.current_frame = 0
+                # Reset all channel states for loop
+                for state in self.channel_playback_state.values():
+                    state["active_frame"] = None
+                    state["frames_remaining"] = 0
             else:
                 self._on_frame_stop()
 

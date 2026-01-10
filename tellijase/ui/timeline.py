@@ -427,6 +427,11 @@ class TrackTimeline(QGroupBox):
             data: Frame data dict or None for empty
         """
         if 0 <= frame_number < len(self.cells):
+            # First, clear ALL old continuations starting from this frame
+            # This handles duration shrinkage correctly
+            self.clear_continuations_from(frame_number + 1)
+
+            # Set the frame data
             self.cells[frame_number].set_data(data)
 
             # Handle duration - mark subsequent cells as continuation
