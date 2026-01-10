@@ -95,6 +95,7 @@ class FrameCell(QWidget):
         volume = self.frame_data.get("volume", 0)
         tone_enabled = self.frame_data.get("tone_enabled", False)
         noise_enabled = self.frame_data.get("noise_enabled", False)
+        muted = self.frame_data.get("muted", False)
 
         # Set up small font for compact display
         font = QFont("Monospace", 7)
@@ -109,9 +110,15 @@ class FrameCell(QWidget):
             painter.drawText(4, y_offset, freq_text)
             y_offset += 14
 
-        # Line 2: Volume
+        # Line 2: Volume + Mute indicator
+        painter.setPen(QColor(220, 220, 220))
         vol_text = f"V:{volume}"
         painter.drawText(4, y_offset, vol_text)
+
+        if muted:
+            painter.setPen(QColor(255, 100, 100))  # Red for mute
+            painter.drawText(32, y_offset, "M")
+
         y_offset += 14
 
         # Line 3: Tone/Noise indicators
@@ -328,6 +335,15 @@ class FrameEditor(QGroupBox):
         self.btn_noise_enable.setEnabled(False)
         enables_row.addWidget(self.btn_noise_enable)
 
+        self.btn_mute = QPushButton("Mute")
+        self.btn_mute.setCheckable(True)
+        self.btn_mute.setChecked(False)
+        self.btn_mute.setEnabled(False)
+        self.btn_mute.setStyleSheet(
+            "QPushButton:checked { background-color: #cc3333; color: white; }"
+        )
+        enables_row.addWidget(self.btn_mute)
+
         enables_row.addStretch()
         layout.addLayout(enables_row)
 
@@ -365,6 +381,7 @@ class FrameEditor(QGroupBox):
             "noise_enabled": self.btn_noise_enable.isChecked()
             if self.btn_noise_enable.isEnabled()
             else None,
+            "muted": self.btn_mute.isChecked(),
         }
 
         self.frame_applied.emit(self.current_track, self.current_frame, data)
@@ -389,6 +406,7 @@ class FrameEditor(QGroupBox):
         self.vol_spin.setEnabled(True)
         self.btn_tone_enable.setEnabled(track_index < 3)
         self.btn_noise_enable.setEnabled(track_index < 3)
+        self.btn_mute.setEnabled(True)
         self.btn_apply.setEnabled(True)
         self.btn_clear.setEnabled(True)
 
@@ -405,6 +423,7 @@ class FrameEditor(QGroupBox):
             self.vol_spin.setValue(10)
             self.btn_tone_enable.setChecked(True)
             self.btn_noise_enable.setChecked(False)
+            self.btn_mute.setChecked(False)
         else:
             # Load data from frame
             if data.get("frequency") is not None:
@@ -415,6 +434,8 @@ class FrameEditor(QGroupBox):
                 self.btn_tone_enable.setChecked(bool(data["tone_enabled"]))
             if data.get("noise_enabled") is not None:
                 self.btn_noise_enable.setChecked(bool(data["noise_enabled"]))
+            if data.get("muted") is not None:
+                self.btn_mute.setChecked(bool(data["muted"]))
 
 
 __all__ = ["FrameTimeline", "FrameEditor"]
