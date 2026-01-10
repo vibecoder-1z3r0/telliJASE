@@ -312,6 +312,7 @@ class TrackTimeline(QGroupBox):
     data_changed = Signal(int, int, dict)  # (track_index, frame_number, data)
     mute_changed = Signal(int, bool)  # (track_index, is_muted)
     solo_changed = Signal(int, bool)  # (track_index, is_soloed)
+    add_card_clicked = Signal(int)  # (track_index) - for condensed mode
 
     def __init__(
         self,
@@ -327,6 +328,8 @@ class TrackTimeline(QGroupBox):
         self.cells: list[FrameCell] = []
         self.is_muted = False
         self.is_soloed = False
+        self.is_condensed = False  # False = expanded (full grid), True = condensed (cards only)
+        self.frame_data_store: dict[int, dict] = {}  # Store data for condensed mode
 
         # Gray panel styling
         self.setStyleSheet(
@@ -344,23 +347,19 @@ class TrackTimeline(QGroupBox):
         timeline_row.setSpacing(4)
 
         # Frame cells container (horizontal scrollable)
-        cells_container = QWidget()
-        cells_layout = QHBoxLayout(cells_container)
-        cells_layout.setSpacing(4)  # Increased spacing between cells
-        cells_layout.setContentsMargins(0, 0, 0, 0)
+        self.cells_container = QWidget()
+        self.cells_layout = QHBoxLayout(self.cells_container)
+        self.cells_layout.setSpacing(4)  # Increased spacing between cells
+        self.cells_layout.setContentsMargins(0, 0, 0, 0)
 
-        for frame_num in range(num_frames):
-            cell = FrameCell(track_index, frame_num)
-            cell.clicked.connect(self.frame_clicked)
-            cell.data_changed.connect(self.data_changed)  # Forward data changes
-            cells_layout.addWidget(cell)
-            self.cells.append(cell)
+        # Initially build in expanded mode
+        self._build_expanded_cells()
 
-        cells_layout.addStretch()
-        timeline_row.addWidget(cells_container)
+        self.cells_layout.addStretch()
+        timeline_row.addWidget(self.cells_container)
         main_layout.addLayout(timeline_row)
 
-        # Controls row (MUTE and SOLO buttons)
+        # Controls row (MUTE, SOLO, Add Card buttons)
         controls_row = QHBoxLayout()
         controls_row.setSpacing(8)
 
@@ -374,8 +373,14 @@ class TrackTimeline(QGroupBox):
         self.btn_solo.setFixedSize(70, 25)
         self.btn_solo.toggled.connect(self._on_solo_toggled)
 
+        self.btn_add_card = QPushButton("+ Add Card")
+        self.btn_add_card.setFixedSize(90, 25)
+        self.btn_add_card.clicked.connect(self._on_add_card_clicked)
+        self.btn_add_card.setVisible(False)  # Only visible in condensed mode
+
         controls_row.addWidget(self.btn_mute)
         controls_row.addWidget(self.btn_solo)
+        controls_row.addWidget(self.btn_add_card)
         controls_row.addStretch()
 
         main_layout.addLayout(controls_row)
@@ -383,6 +388,28 @@ class TrackTimeline(QGroupBox):
         # Initialize button styles
         self._update_mute_style()
         self._update_solo_style()
+
+    def _build_expanded_cells(self) -> None:
+        """Build cells for expanded mode (full timeline grid)."""
+        for frame_num in range(self.num_frames):
+            cell = FrameCell(self.track_index, frame_num)
+            cell.clicked.connect(self.frame_clicked)
+            cell.data_changed.connect(self.data_changed)  # Forward data changes
+            self.cells_layout.addWidget(cell)
+            self.cells.append(cell)
+
+    def _build_condensed_cells(self) -> None:
+        """Build cells for condensed mode (only cards with data)."""
+        # Sort frame numbers to display in order
+        sorted_frames = sorted(self.frame_data_store.keys())
+        for frame_num in sorted_frames:
+            cell = FrameCell(self.track_index, frame_num)
+            cell.clicked.connect(self.frame_clicked)
+            cell.data_changed.connect(self.data_changed)
+            self.cells_layout.addWidget(cell)
+            self.cells.append(cell)
+            # Load the stored data
+            cell.set_data(self.frame_data_store[frame_num])
 
     def _on_mute_toggled(self, checked: bool) -> None:
         """Handle MUTE button toggle."""
@@ -395,6 +422,10 @@ class TrackTimeline(QGroupBox):
         self.is_soloed = checked
         self._update_solo_style()
         self.solo_changed.emit(self.track_index, checked)
+
+    def _on_add_card_clicked(self) -> None:
+        """Handle Add Card button in condensed mode."""
+        self.add_card_clicked.emit(self.track_index)
 
     def _update_mute_style(self) -> None:
         """Update MUTE button appearance based on state."""
@@ -414,6 +445,32 @@ class TrackTimeline(QGroupBox):
         else:
             self.btn_solo.setStyleSheet("background-color: #555; color: #aaa;")
 
+    def rebuild_cells(self, condensed: bool) -> None:
+        """Rebuild cells for condensed or expanded mode.
+
+        Args:
+            condensed: True for condensed mode (cards only), False for expanded (full grid)
+        """
+        self.is_condensed = condensed
+
+        # Clear existing cells
+        for cell in self.cells:
+            self.cells_layout.removeWidget(cell)
+            cell.deleteLater()
+        self.cells.clear()
+
+        # Rebuild based on mode
+        if condensed:
+            self._build_condensed_cells()
+            self.btn_add_card.setVisible(True)
+        else:
+            self._build_expanded_cells()
+            self.btn_add_card.setVisible(False)
+            # Restore data from store
+            for frame_num, data in self.frame_data_store.items():
+                if frame_num < len(self.cells):
+                    self.cells[frame_num].set_data(data)
+
     def set_frame_filled(self, frame_number: int, filled: bool) -> None:
         """Mark a specific frame as filled or empty."""
         if 0 <= frame_number < len(self.cells):
@@ -426,7 +483,14 @@ class TrackTimeline(QGroupBox):
             frame_number: Frame index
             data: Frame data dict or None for empty
         """
-        if 0 <= frame_number < len(self.cells):
+        # Update data store (used for mode switching)
+        if data is not None:
+            self.frame_data_store[frame_number] = data.copy()
+        elif frame_number in self.frame_data_store:
+            del self.frame_data_store[frame_number]
+
+        # Update cell if in expanded mode
+        if not self.is_condensed and 0 <= frame_number < len(self.cells):
             # First, clear ALL old continuations starting from this frame
             # This handles duration shrinkage correctly
             self.clear_continuations_from(frame_number + 1)
@@ -445,6 +509,9 @@ class TrackTimeline(QGroupBox):
             else:
                 # Clear continuation on this cell if duration is 1
                 self.cells[frame_number].set_continuation(False)
+        elif self.is_condensed:
+            # In condensed mode, rebuild to show/hide cards dynamically
+            self.rebuild_cells(True)
 
     def clear_continuations_from(self, start_frame: int) -> None:
         """Clear continuation markers from a frame onwards.
@@ -474,10 +541,29 @@ class FrameTimeline(QWidget):
         self.tracks: list[TrackTimeline] = []
         self.clipboard = []  # Store copied frame data: [(track_idx, frame_num, data), ...]
         self.setFocusPolicy(Qt.StrongFocus)  # Allow keyboard events
+        self.is_condensed = False  # Track current mode
 
         layout = QVBoxLayout(self)
         layout.setSpacing(2)
         layout.setContentsMargins(0, 0, 0, 0)
+
+        # Controls row with mode toggle
+        controls_row = QHBoxLayout()
+        controls_row.setSpacing(8)
+
+        self.btn_toggle_mode = QPushButton("Expanded")
+        self.btn_toggle_mode.setCheckable(True)
+        self.btn_toggle_mode.setFixedSize(100, 30)
+        self.btn_toggle_mode.toggled.connect(self._on_mode_toggled)
+        self.btn_toggle_mode.setStyleSheet(
+            "QPushButton { background-color: #555; color: #ccc; font-weight: bold; }"
+            "QPushButton:checked { background-color: #0a7; color: white; }"
+        )
+        controls_row.addWidget(QLabel("View Mode:"))
+        controls_row.addWidget(self.btn_toggle_mode)
+        controls_row.addStretch()
+
+        layout.addLayout(controls_row)
 
         # Header with frame numbers
         header_row = QHBoxLayout()
@@ -517,6 +603,16 @@ class FrameTimeline(QWidget):
             track.solo_changed.connect(self._on_track_solo_changed)
             layout.addWidget(track)
             self.tracks.append(track)
+
+    def _on_mode_toggled(self, checked: bool) -> None:
+        """Handle mode toggle button - switch between condensed and expanded."""
+        self.is_condensed = checked
+        mode_text = "Condensed" if checked else "Expanded"
+        self.btn_toggle_mode.setText(mode_text)
+
+        # Rebuild all tracks with new mode
+        for track in self.tracks:
+            track.rebuild_cells(self.is_condensed)
 
     def _on_track_mute_changed(self, track_index: int, is_muted: bool) -> None:
         """Handle track MUTE button - propagate to main window audio control."""
