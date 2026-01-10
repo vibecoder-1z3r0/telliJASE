@@ -72,6 +72,12 @@ class MainWindow(QMainWindow):
             "E": {},  # Envelope
         }
 
+        # Frame playback state
+        self.playback_timer: Optional[QTimer] = None
+        self.current_frame = 0
+        self.is_playing = False
+        self.playback_loop = False
+
         # UI widgets
         self.channel_controls: list[ChannelControl] = []
 
@@ -333,13 +339,18 @@ class MainWindow(QMainWindow):
         self.btn_frame_loop = QPushButton("Loop")
         self.btn_frame_loop.setCheckable(True)
 
+        # Connect transport controls
+        self.btn_frame_play.clicked.connect(self._on_frame_play)
+        self.btn_frame_pause.clicked.connect(self._on_frame_pause)
+        self.btn_frame_stop.clicked.connect(self._on_frame_stop)
+        self.btn_frame_loop.toggled.connect(self._on_frame_loop_toggled)
+
         for btn in (
             self.btn_frame_play,
             self.btn_frame_pause,
             self.btn_frame_stop,
             self.btn_frame_loop,
         ):
-            btn.setEnabled(False)  # Enable when playback is implemented
             transport.addWidget(btn)
 
         transport.addStretch()
@@ -685,10 +696,40 @@ class MainWindow(QMainWindow):
             return
 
         song = self.project.songs[index]
-        # TODO: Collect timeline data and save to song.tracks
+
+        # Convert timeline_data to TrackEvent objects
+        song.tracks = {}
+        for channel_id, frames in self.timeline_data.items():
+            if not frames:
+                continue  # Skip empty tracks
+
+            events = []
+            for frame_num, data in sorted(frames.items()):
+                # Convert frequency to period for storage
+                period = None
+                if data.get("frequency") is not None:
+                    period = frequency_to_period(data["frequency"])
+
+                event = TrackEvent(
+                    frame=frame_num,
+                    duration=1,  # Default 1 frame duration
+                    period=period,
+                    volume=data.get("volume"),
+                    noise_period=None,  # Handled by noise track
+                    noise=data.get("noise_enabled"),
+                )
+                events.append(event)
+
+            if events:
+                song.tracks[channel_id] = events
+
         song.updated = datetime.utcnow().isoformat()  # type: ignore
         self.project.touch()
-        self.statusBar().showMessage(f"Saved to sequence: {song.name}", 3000)
+        self.statusBar().showMessage(
+            f"Saved {sum(len(e) for e in song.tracks.values())} "
+            f"events to sequence: {song.name}",
+            3000,
+        )
 
     def _on_load_sequence(self) -> None:
         """Load selected sequence into timeline."""
@@ -700,8 +741,48 @@ class MainWindow(QMainWindow):
             return
 
         song = self.project.songs[index]
-        # TODO: Load song.tracks into timeline UI
-        self.statusBar().showMessage(f"Loaded sequence: {song.name}", 3000)
+        self.current_song = song
+
+        # Clear existing timeline data
+        for channel_id in self.timeline_data:
+            self.timeline_data[channel_id] = {}
+
+        # Clear timeline UI
+        for track_idx in range(5):
+            for frame_num in range(128):
+                self.timeline.set_frame_data(track_idx, frame_num, False)
+
+        # Load TrackEvents into timeline_data
+        event_count = 0
+        for channel_id, events in song.tracks.items():
+            for event in events:
+                # Convert period back to frequency
+                frequency = None
+                if event.period is not None:
+                    from tellijase.psg.utils import period_to_frequency
+
+                    frequency = period_to_frequency(event.period)
+
+                # Build frame data
+                data = {
+                    "frequency": frequency,
+                    "volume": event.volume,
+                    "tone_enabled": event.period is not None,  # Has tone if period set
+                    "noise_enabled": event.noise,
+                }
+
+                # Store in timeline_data
+                self.timeline_data[channel_id][event.frame] = data
+
+                # Update timeline UI
+                track_idx = {"A": 0, "B": 1, "C": 2, "N": 3, "E": 4}.get(channel_id, 0)
+                self.timeline.set_frame_data(track_idx, event.frame, True)
+
+                event_count += 1
+
+        self.statusBar().showMessage(
+            f"Loaded {event_count} events from sequence: {song.name}", 3000
+        )
 
     def _track_index_to_channel_id(self, track_index: int) -> str:
         """Convert track index to channel ID."""
@@ -747,9 +828,124 @@ class MainWindow(QMainWindow):
         # Reset editor to defaults
         self.frame_editor.load_frame_data(None)
 
-        self.statusBar().showMessage(
-            f"Cleared Track {track_index} Frame {frame_number}", 2000
+        self.statusBar().showMessage(f"Cleared Track {track_index} Frame {frame_number}", 2000)
+
+    # Frame Playback Engine -------------------------------------------
+    def _on_frame_play(self) -> None:
+        """Start frame playback."""
+        if not self.audio_available:
+            QMessageBox.warning(self, "Audio Unavailable", "Cannot play without audio backend")
+            return
+
+        # Start audio stream if not already playing
+        if self.audio_stream and not self.audio_stream.is_playing():
+            if not self.audio_stream.start():
+                QMessageBox.warning(self, "Playback Failed", "Failed to start audio stream")
+                return
+
+        # Create playback timer if needed
+        if self.playback_timer is None:
+            self.playback_timer = QTimer(self)
+            self.playback_timer.timeout.connect(self._advance_frame)
+
+        # Calculate frame interval (60 frames/sec NTSC timing)
+        frames_per_second = 60
+        ms_per_frame = int(1000 / frames_per_second)
+        self.playback_timer.start(ms_per_frame)
+
+        self.is_playing = True
+        self.btn_frame_play.setEnabled(False)
+        self.btn_frame_pause.setEnabled(True)
+        self.btn_frame_stop.setEnabled(True)
+        self.statusBar().showMessage("Playing...", 0)
+
+    def _on_frame_pause(self) -> None:
+        """Pause frame playback."""
+        if self.playback_timer:
+            self.playback_timer.stop()
+
+        self.is_playing = False
+        self.btn_frame_play.setEnabled(True)
+        self.btn_frame_pause.setEnabled(False)
+        self.statusBar().showMessage(f"Paused at frame {self.current_frame}", 0)
+
+    def _on_frame_stop(self) -> None:
+        """Stop frame playback and reset."""
+        if self.playback_timer:
+            self.playback_timer.stop()
+
+        # Stop audio
+        if self.audio_stream:
+            self.audio_stream.stop()
+
+        self.is_playing = False
+        self.current_frame = 0
+
+        # Reset PSG state
+        self.current_state = PSGState()
+        self._update_register_display()
+
+        self.btn_frame_play.setEnabled(True)
+        self.btn_frame_pause.setEnabled(False)
+        self.btn_frame_stop.setEnabled(False)
+        self.statusBar().showMessage("Stopped")
+
+    def _on_frame_loop_toggled(self, checked: bool) -> None:
+        """Toggle loop mode."""
+        self.playback_loop = checked
+
+    def _advance_frame(self) -> None:
+        """Advance to next frame and update PSG state."""
+        # Apply frame data to PSG state for each channel
+        for channel_id, frames in self.timeline_data.items():
+            if self.current_frame in frames:
+                data = frames[self.current_frame]
+
+                if channel_id == "A":
+                    self._apply_frame_to_channel(self.current_state.channel_a, data)
+                elif channel_id == "B":
+                    self._apply_frame_to_channel(self.current_state.channel_b, data)
+                elif channel_id == "C":
+                    self._apply_frame_to_channel(self.current_state.channel_c, data)
+                elif channel_id == "N":
+                    # Apply noise period
+                    if data.get("volume") is not None:
+                        # Use volume as noise period for noise track
+                        self.current_state.noise_period = data.get("volume", 1)
+
+        # Update register display
+        self._update_register_display()
+
+        # Advance frame counter
+        self.current_frame += 1
+
+        # Check for end of timeline
+        max_frame = max(
+            (max(frames.keys()) if frames else 0 for frames in self.timeline_data.values()),
+            default=0,
         )
+
+        if self.current_frame > max_frame:
+            if self.playback_loop:
+                self.current_frame = 0
+            else:
+                self._on_frame_stop()
+
+    def _apply_frame_to_channel(self, channel, data: dict) -> None:
+        """Apply frame data to a PSG channel.
+
+        Args:
+            channel: PSGChannel to update
+            data: Frame data dict
+        """
+        if data.get("frequency") is not None:
+            channel.frequency = data["frequency"]
+        if data.get("volume") is not None:
+            channel.volume = data["volume"]
+        if data.get("tone_enabled") is not None:
+            channel.tone_enabled = data["tone_enabled"]
+        if data.get("noise_enabled") is not None:
+            channel.noise_enabled = data["noise_enabled"]
 
     def _on_noise_slider_changed(self, value: int) -> None:
         """Noise period slider changed - update text input and PSG state."""
