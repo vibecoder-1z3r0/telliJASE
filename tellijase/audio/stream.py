@@ -106,18 +106,34 @@ class LivePSGStream:
             return True
 
         try:
-            # Get default output device explicitly to avoid device -1 query errors
-            default_device = sd.default.device[1]  # [input, output]
+            # Find a valid output device
+            device = None
+            try:
+                # Try to get default output device
+                default_out = sd.default.device[1]
+                if default_out is not None and default_out >= 0:
+                    device = default_out
+            except (AttributeError, IndexError, TypeError):
+                pass
+
+            # If no valid default, find first available output device
+            if device is None:
+                devices = sd.query_devices()
+                for idx, dev in enumerate(devices):
+                    if dev['max_output_channels'] > 0:
+                        device = idx
+                        logger.info(f"Using first available output device: {dev['name']}")
+                        break
 
             self.stream = sd.OutputStream(
-                device=default_device,
+                device=device,  # None is ok - lets sounddevice choose
                 channels=1,
                 samplerate=self.sample_rate,
                 callback=self._callback,
                 blocksize=self.block_size,
             )
             self.stream.start()
-            logger.info(f"Audio stream started on device {default_device}")
+            logger.info(f"Audio stream started on device {device}")
             return True
 
         except Exception as e:
