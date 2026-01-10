@@ -750,7 +750,7 @@ class MainWindow(QMainWindow):
         # Clear timeline UI
         for track_idx in range(5):
             for frame_num in range(128):
-                self.timeline.set_frame_data(track_idx, frame_num, False)
+                self.timeline.set_frame_data(track_idx, frame_num, None)
 
         # Load TrackEvents into timeline_data
         event_count = 0
@@ -774,9 +774,9 @@ class MainWindow(QMainWindow):
                 # Store in timeline_data
                 self.timeline_data[channel_id][event.frame] = data
 
-                # Update timeline UI
+                # Update timeline UI with visualization
                 track_idx = {"A": 0, "B": 1, "C": 2, "N": 3, "E": 4}.get(channel_id, 0)
-                self.timeline.set_frame_data(track_idx, event.frame, True)
+                self.timeline.set_frame_data(track_idx, event.frame, data)
 
                 event_count += 1
 
@@ -807,8 +807,8 @@ class MainWindow(QMainWindow):
         # Store frame data
         self.timeline_data[channel_id][frame_number] = data
 
-        # Update timeline cell to show filled
-        self.timeline.set_frame_data(track_index, frame_number, True)
+        # Update timeline cell with visualization
+        self.timeline.set_frame_data(track_index, frame_number, data)
 
         self.statusBar().showMessage(
             f"Applied frame data to Track {track_index} Frame {frame_number}", 2000
@@ -823,7 +823,7 @@ class MainWindow(QMainWindow):
             del self.timeline_data[channel_id][frame_number]
 
         # Update timeline cell to show empty
-        self.timeline.set_frame_data(track_index, frame_number, False)
+        self.timeline.set_frame_data(track_index, frame_number, None)
 
         # Reset editor to defaults
         self.frame_editor.load_frame_data(None)
@@ -881,6 +881,9 @@ class MainWindow(QMainWindow):
         self.is_playing = False
         self.current_frame = 0
 
+        # Clear playback position highlight
+        self.timeline.set_playback_position(-1)
+
         # Reset PSG state
         self.current_state = PSGState()
         self._update_register_display()
@@ -915,6 +918,9 @@ class MainWindow(QMainWindow):
 
         # Update register display
         self._update_register_display()
+
+        # Highlight current playback position
+        self.timeline.set_playback_position(self.current_frame)
 
         # Advance frame counter
         self.current_frame += 1
