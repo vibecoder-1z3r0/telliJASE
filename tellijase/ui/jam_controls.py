@@ -247,7 +247,14 @@ class ChannelControl(QGroupBox):
 
         self.muted_changed.emit(muted)
 
-    def set_state(self, frequency: float, volume: int, tone_enabled: bool, noise_enabled: bool, muted: bool = False) -> None:
+    def set_state(
+        self,
+        frequency: float,
+        volume: int,
+        tone_enabled: bool,
+        noise_enabled: bool,
+        muted: bool = False,
+    ) -> None:
         """Update UI from model (for loading projects).
 
         Args:

@@ -32,7 +32,7 @@ from PySide6.QtWidgets import (
 from tellijase import __version__
 from tellijase.audio.stream import LivePSGStream, SOUNDDEVICE_AVAILABLE
 from tellijase.audio.pygame_player import PygamePSGPlayer, PYGAME_AVAILABLE
-from tellijase.models import JAMSnapshot, PSGState
+from tellijase.models import PSGState
 from tellijase.storage import JamSession, Project, load_project, new_project, save_project
 from tellijase.ui.jam_controls import ChannelControl
 
@@ -315,7 +315,7 @@ class MainWindow(QMainWindow):
             self.btn_play.setEnabled(False)
             self.btn_stop.setEnabled(False)
             self.jam_status_label.setText(
-                f"⚠️ Audio unavailable (no backend found)"
+                "⚠️ Audio unavailable (no backend found)"
             )
             self.jam_status_label.setStyleSheet("color: orange; font-weight: bold;")
         else:
@@ -393,16 +393,25 @@ class MainWindow(QMainWindow):
             self,
             "About telliJASE",
             f"<h2>telliJASE v{__version__}</h2>"
-            "<p><b>J</b>ust <b>A</b> <b>S</b>ound <b>E</b>ditor for the Intellivision AY-3-8914 PSG</p>"
-            "<p>Create custom music and sound effects using the General Instrument AY-3-8914 "
-            "Programmable Sound Generator chip found in the Intellivision game console</p>"
+            "<p><b>J</b>ust <b>A</b> <b>S</b>ound <b>E</b>ditor "
+            "for the Intellivision AY-3-8914 PSG</p>"
+            "<p>Create custom music and sound effects using the General "
+            "Instrument AY-3-8914 Programmable Sound Generator chip found "
+            "in the Intellivision game console</p>"
             "<p>© 2025-2026 Andrew Potozniak (Tyraziel & 1.z3r0)</p>"
-            "<p>Dual licensed under the <a href='https://opensource.org/licenses/MIT'>MIT License</a> "
-            "and <a href='https://github.com/tyraziel/vibe-coder-license'>VCL-0.1-Experimental</a></p>"
-            "<p><small>Intellivision and Intellivision trademarks are the property of Atari Interactive, Inc. "
-            "This application is built to aid sound programming for the Intellivision. "
-            "This project is not affiliated with or endorsed by Atari Interactive, Inc.</small></p>"
-            "<p><i><a href='https://aiattribution.github.io/statements/AIA-PAI-Nc-Hin-R-?model=Claude%20Code%20%5BSonnet%204.5%5D-v1.0'>AIA PAI Nc Hin R Claude Code [Sonnet 4.5] v1.0</a></i></p>"
+            "<p>Dual licensed under the "
+            "<a href='https://opensource.org/licenses/MIT'>MIT License</a> "
+            "and <a href='https://github.com/tyraziel/vibe-coder-license'>"
+            "VCL-0.1-Experimental</a></p>"
+            "<p><small>Intellivision and Intellivision trademarks are "
+            "the property of Atari Interactive, Inc. "
+            "This application is built to aid sound programming "
+            "for the Intellivision. "
+            "This project is not affiliated with or endorsed by "
+            "Atari Interactive, Inc.</small></p>"
+            "<p><i><a href='https://aiattribution.github.io/statements/"
+            "AIA-PAI-Nc-Hin-R-?model=Claude%20Code%20%5BSonnet%204.5%5D-v1.0'>"
+            "AIA PAI Nc Hin R Claude Code [Sonnet 4.5] v1.0</a></i></p>"
         )
 
     # JAM Mode Callbacks ----------------------------------------------
@@ -563,8 +572,8 @@ class MainWindow(QMainWindow):
         output_lines.append("")
 
         # Envelope (placeholder for future implementation)
-        env_period = (regs.get('R14', 0) << 8) | regs.get('R13', 0)
-        env_shape = regs.get('R15', 0)
+        # env_period = (regs.get('R14', 0) << 8) | regs.get('R13', 0)
+        # env_shape = regs.get('R15', 0)
         output_lines.append("Envelope: Not implemented")
 
         self.register_output_display.setText("\n".join(output_lines))
@@ -584,16 +593,22 @@ class MainWindow(QMainWindow):
 
         # Current backend failed - try fallback to pygame
         if self.audio_backend == "sounddevice" and PYGAME_AVAILABLE:
-            logger.warning("sounddevice failed to start, falling back to pygame")
+            logger.warning(
+                "sounddevice failed to start, falling back to pygame"
+            )
             try:
                 self.audio_stream = PygamePSGPlayer(self.current_state)
                 self.audio_backend = "pygame"
                 if self.audio_stream.start():
                     self.btn_play.setEnabled(False)
                     self.btn_stop.setEnabled(True)
-                    self.jam_status_label.setText(f"Audio: {self.audio_backend} (fallback)")
+                    self.jam_status_label.setText(
+                        f"Audio: {self.audio_backend} (fallback)"
+                    )
                     self.jam_status_label.setStyleSheet("color: orange;")
-                    self.statusBar().showMessage(f"Playing with {self.audio_backend} (fallback)…", 3000)
+                    self.statusBar().showMessage(
+                        f"Playing with {self.audio_backend} (fallback)…", 3000
+                    )
                     return
             except Exception as e:
                 logger.error(f"pygame fallback failed: {e}")
