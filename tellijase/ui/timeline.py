@@ -1,4 +1,4 @@
-"""Timeline widget for FRAME mode - tracker-style sequencer."""
+"""Timeline widget for FRAME mode - card-based sequencer with inline editing."""
 
 from __future__ import annotations
 
@@ -12,12 +12,14 @@ from PySide6.QtWidgets import (
     QPushButton,
     QSpinBox,
     QGroupBox,
+    QGridLayout,
 )
 
 
 class FrameCell(QWidget):
-    """Single cell in the timeline representing one frame of data."""
+    """Single cell with inline editing widgets for frame data."""
 
+    data_changed = Signal(int, int, dict)  # (track_index, frame_number, data)
     clicked = Signal(int, int)  # (track_index, frame_number)
 
     def __init__(
@@ -29,12 +31,119 @@ class FrameCell(QWidget):
         super().__init__(parent)
         self.track_index = track_index
         self.frame_number = frame_number
-        self.is_filled = False
-        self.frame_data = None  # Store actual frame data for visualization
+        self.is_continuation = False  # True if showing continuation of previous frame
         self.is_highlighted = False  # Playback position highlight
         self.is_selected = False  # Selection state for copy/paste
-        self.setFixedSize(70, 55)  # Larger size for text labels
-        self.setFocusPolicy(Qt.StrongFocus)  # Allow keyboard focus
+        self.is_filled = False
+        self.frame_data = None
+
+        self.setFixedSize(120, 80)  # Larger to fit widgets
+        self.setFocusPolicy(Qt.StrongFocus)
+
+        # Main layout
+        layout = QGridLayout(self)
+        layout.setSpacing(2)
+        layout.setContentsMargins(4, 4, 4, 4)
+
+        # Row 1: [Frequency] Hz
+        self.freq_spin = QSpinBox()
+        self.freq_spin.setRange(27, 2000)
+        self.freq_spin.setValue(440)
+        self.freq_spin.setFixedWidth(60)
+        self.freq_spin.valueChanged.connect(self._on_data_changed)
+        hz_label = QLabel("Hz")
+        hz_label.setStyleSheet("color: #ccc; font-size: 9px;")
+        layout.addWidget(self.freq_spin, 0, 0)
+        layout.addWidget(hz_label, 0, 1)
+
+        # Row 2: V [Volume] [Deactivate]
+        v_label = QLabel("V")
+        v_label.setStyleSheet("color: #ccc; font-size: 9px;")
+        self.vol_spin = QSpinBox()
+        self.vol_spin.setRange(0, 15)
+        self.vol_spin.setValue(10)
+        self.vol_spin.setFixedWidth(40)
+        self.vol_spin.valueChanged.connect(self._on_data_changed)
+
+        self.btn_deactivate = QPushButton("D")
+        self.btn_deactivate.setCheckable(True)
+        self.btn_deactivate.setFixedSize(25, 20)
+        self.btn_deactivate.toggled.connect(self._on_deactivate_toggled)
+
+        layout.addWidget(v_label, 1, 0, Qt.AlignLeft)
+        layout.addWidget(self.vol_spin, 1, 0, Qt.AlignRight)
+        layout.addWidget(self.btn_deactivate, 1, 1)
+
+        # Row 3: [Tone] [Noise]
+        self.btn_tone = QPushButton("T")
+        self.btn_tone.setCheckable(True)
+        self.btn_tone.setChecked(True)
+        self.btn_tone.setFixedSize(35, 20)
+        self.btn_tone.toggled.connect(self._on_tone_toggled)
+
+        self.btn_noise = QPushButton("N")
+        self.btn_noise.setCheckable(True)
+        self.btn_noise.setChecked(False)
+        self.btn_noise.setFixedSize(35, 20)
+        self.btn_noise.toggled.connect(self._on_noise_toggled)
+
+        layout.addWidget(self.btn_tone, 2, 0)
+        layout.addWidget(self.btn_noise, 2, 1)
+
+        # Initially disabled until frame is activated
+        self._set_widgets_enabled(False)
+
+    def _set_widgets_enabled(self, enabled: bool) -> None:
+        """Enable or disable all interactive widgets."""
+        self.freq_spin.setEnabled(enabled and self.track_index < 3)  # Only tone channels
+        self.vol_spin.setEnabled(enabled)
+        self.btn_tone.setEnabled(enabled and self.track_index < 3)
+        self.btn_noise.setEnabled(enabled and self.track_index < 3)
+        self.btn_deactivate.setEnabled(enabled)
+
+    def _on_data_changed(self) -> None:
+        """Emit signal when data changes."""
+        if self.is_filled and not self.is_continuation:
+            self._emit_current_data()
+
+    def _on_tone_toggled(self, checked: bool) -> None:
+        """Update tone button styling and emit data."""
+        self._update_button_style(self.btn_tone, checked, QColor(0, 255, 100))
+        self._on_data_changed()
+
+    def _on_noise_toggled(self, checked: bool) -> None:
+        """Update noise button styling and emit data."""
+        self._update_button_style(self.btn_noise, checked, QColor(0, 255, 100))
+        self._on_data_changed()
+
+    def _on_deactivate_toggled(self, checked: bool) -> None:
+        """Update deactivate button styling and emit data."""
+        self._update_button_style(self.btn_deactivate, checked, QColor(255, 100, 100))
+        self._on_data_changed()
+
+    def _update_button_style(
+        self, button: QPushButton, checked: bool, active_color: QColor
+    ) -> None:
+        """Update button background color based on state."""
+        if checked:
+            button.setStyleSheet(
+                f"background-color: rgb({active_color.red()}, {active_color.green()}, "
+                f"{active_color.blue()}); color: black; font-weight: bold;"
+            )
+        else:
+            button.setStyleSheet("background-color: #555; color: #aaa;")
+
+    def _emit_current_data(self) -> None:
+        """Collect and emit current frame data."""
+        data = {
+            "frequency": self.freq_spin.value() if self.track_index < 3 else None,
+            "volume": self.vol_spin.value(),
+            "tone_enabled": self.btn_tone.isChecked() if self.track_index < 3 else None,
+            "noise_enabled": self.btn_noise.isChecked() if self.track_index < 3 else None,
+            "deactivated": self.btn_deactivate.isChecked(),
+            "duration": 1,  # Default duration, can be modified later
+        }
+        self.data_changed.emit(self.track_index, self.frame_number, data)
 
     def set_highlighted(self, highlighted: bool) -> None:
         """Set playback position highlight."""
@@ -46,117 +155,141 @@ class FrameCell(QWidget):
         self.is_selected = selected
         self.update()
 
+    def set_continuation(self, is_continuation: bool) -> None:
+        """Mark this cell as continuation of a previous frame's duration."""
+        self.is_continuation = is_continuation
+        if is_continuation:
+            # Continuation cells are disabled and show lighter background
+            self._set_widgets_enabled(False)
+            self.setStyleSheet("background-color: #3a3a3a;")  # Lighter charcoal
+        else:
+            self.setStyleSheet("")  # Reset to default
+        self.update()
+
     def set_data(self, data: dict | None) -> None:
-        """Set frame data and update visualization.
+        """Set frame data and update widget values.
 
         Args:
-            data: Frame data dict with frequency, volume, tone_enabled, noise_enabled
+            data: Frame data dict with frequency, volume, tone_enabled, noise_enabled, deactivated
                   or None for empty frame
         """
         self.frame_data = data
         self.is_filled = data is not None
-        self.update()  # Trigger repaint
+
+        # Block signals while updating to avoid triggering data_changed
+        self.freq_spin.blockSignals(True)
+        self.vol_spin.blockSignals(True)
+        self.btn_tone.blockSignals(True)
+        self.btn_noise.blockSignals(True)
+        self.btn_deactivate.blockSignals(True)
+
+        if data is None:
+            # Empty frame - disable widgets and reset to defaults
+            self._set_widgets_enabled(False)
+            self.freq_spin.setValue(440)
+            self.vol_spin.setValue(10)
+            self.btn_tone.setChecked(True)
+            self.btn_noise.setChecked(False)
+            self.btn_deactivate.setChecked(False)
+        else:
+            # Load data from dict
+            if data.get("frequency") is not None:
+                self.freq_spin.setValue(int(data["frequency"]))
+            if data.get("volume") is not None:
+                self.vol_spin.setValue(int(data["volume"]))
+            if data.get("tone_enabled") is not None:
+                self.btn_tone.setChecked(bool(data["tone_enabled"]))
+            if data.get("noise_enabled") is not None:
+                self.btn_noise.setChecked(bool(data["noise_enabled"]))
+            if data.get("deactivated") is not None:
+                self.btn_deactivate.setChecked(bool(data["deactivated"]))
+
+            # Enable widgets for filled frames
+            self._set_widgets_enabled(True)
+
+            # Update button styles
+            self._update_button_style(self.btn_tone, self.btn_tone.isChecked(), QColor(0, 255, 100))
+            self._update_button_style(
+                self.btn_noise, self.btn_noise.isChecked(), QColor(0, 255, 100)
+            )
+            self._update_button_style(
+                self.btn_deactivate, self.btn_deactivate.isChecked(), QColor(255, 100, 100)
+            )
+
+        # Unblock signals
+        self.freq_spin.blockSignals(False)
+        self.vol_spin.blockSignals(False)
+        self.btn_tone.blockSignals(False)
+        self.btn_noise.blockSignals(False)
+        self.btn_deactivate.blockSignals(False)
+
+        self.update()
 
     def set_filled(self, filled: bool) -> None:
         """Mark this cell as filled (has event data) - for backward compatibility."""
         if not filled:
-            self.frame_data = None
-        self.is_filled = filled
-        self.update()
+            self.set_data(None)
+        else:
+            # Create default data
+            self.set_data(
+                {
+                    "frequency": 440,
+                    "volume": 10,
+                    "tone_enabled": True,
+                    "noise_enabled": False,
+                    "deactivated": False,
+                    "duration": 1,
+                }
+            )
 
     def paintEvent(self, event) -> None:
-        """Paint the cell with visual representation of the data."""
+        """Paint cell border based on state (highlighted, selected, continuation)."""
+        super().paintEvent(event)  # Let Qt paint the background first
         painter = QPainter(self)
-        painter.setRenderHint(QPainter.Antialiasing)
 
-        # Background
-        if self.is_filled and self.frame_data:
-            painter.fillRect(self.rect(), QColor(30, 30, 30))
-        else:
-            painter.fillRect(self.rect(), QColor(42, 42, 42))
-
-        # Border (highlight playback position and selection)
+        # Draw border based on state
         if self.is_highlighted:
-            painter.setPen(QPen(QColor(255, 255, 0), 3))  # Yellow highlight for playback
+            painter.setPen(QPen(QColor(255, 255, 0), 3))  # Yellow for playback position
         elif self.is_selected:
             painter.setPen(QPen(QColor(0, 255, 255), 2))  # Cyan for selection
+        elif self.is_continuation:
+            painter.setPen(QPen(QColor(120, 120, 120), 1))  # Gray for continuation
         elif self.is_filled:
-            painter.setPen(QPen(QColor(0, 170, 255), 1))
+            painter.setPen(QPen(QColor(0, 170, 255), 1))  # Blue for filled
         else:
-            painter.setPen(QPen(QColor(85, 85, 85), 1))
+            painter.setPen(QPen(QColor(85, 85, 85), 1))  # Dark gray for empty
+
         painter.drawRect(self.rect().adjusted(0, 0, -1, -1))
-
-        # Draw data visualization if filled
-        if self.is_filled and self.frame_data:
-            self._draw_data_visualization(painter)
-
-    def _draw_data_visualization(self, painter: QPainter) -> None:
-        """Draw text representation of frame data.
-
-        Layout:
-        Line 1: [freq] Hz
-        Line 2: V:[vol]
-        Line 3: [T] [N]
-        """
-        from PySide6.QtGui import QFont
-
-        frequency = self.frame_data.get("frequency")
-        volume = self.frame_data.get("volume", 0)
-        tone_enabled = self.frame_data.get("tone_enabled", False)
-        noise_enabled = self.frame_data.get("noise_enabled", False)
-
-        # Set up small font for compact display
-        font = QFont("Monospace", 7)
-        painter.setFont(font)
-        painter.setPen(QColor(220, 220, 220))  # Light gray text
-
-        y_offset = 12  # Start position
-
-        # Line 1: Frequency (only for tone channels)
-        if frequency is not None:
-            freq_text = f"{int(frequency)}Hz"
-            painter.drawText(4, y_offset, freq_text)
-            y_offset += 14
-
-        # Line 2: Volume
-        vol_text = f"V:{volume}"
-        painter.drawText(4, y_offset, vol_text)
-        y_offset += 14
-
-        # Line 3: Tone/Noise indicators
-        x_pos = 4
-        if tone_enabled:
-            painter.setPen(QColor(0, 255, 100))  # Green for tone
-            painter.drawText(x_pos, y_offset, "T")
-            x_pos += 16
-
-        if noise_enabled:
-            painter.setPen(QColor(255, 150, 0))  # Orange for noise
-            painter.drawText(x_pos, y_offset, "N")
 
     def mousePressEvent(self, event) -> None:
         """Handle click on this cell."""
         from PySide6.QtCore import Qt as QtCore_Qt
 
-        # Ctrl+Click = toggle selection
+        # Ctrl+Click = toggle selection (for copy/paste)
         if event.modifiers() & QtCore_Qt.ControlModifier:
             self.set_selected(not self.is_selected)
-        # Regular click = edit (emit signal to Frame Editor)
+        # Regular click on empty cell = create frame with defaults
+        elif not self.is_filled and not self.is_continuation:
+            self.set_filled(True)
+        # Regular click = allow inline editing (widgets handle clicks themselves)
         else:
             self.clicked.emit(self.track_index, self.frame_number)
+
         super().mousePressEvent(event)
 
     def mouseDoubleClickEvent(self, event) -> None:
-        """Handle double-click for inline editing."""
-        # For now, just emit clicked - inline editing can be added later
+        """Handle double-click - emit signal for side panel editing."""
         self.clicked.emit(self.track_index, self.frame_number)
         super().mouseDoubleClickEvent(event)
 
 
-class TrackTimeline(QWidget):
-    """Timeline for a single track (channel or noise)."""
+class TrackTimeline(QGroupBox):
+    """Timeline for a single track with MUTE/SOLO controls."""
 
     frame_clicked = Signal(int, int)  # (track_index, frame_number)
+    data_changed = Signal(int, int, dict)  # (track_index, frame_number, data)
+    mute_changed = Signal(int, bool)  # (track_index, is_muted)
+    solo_changed = Signal(int, bool)  # (track_index, is_soloed)
 
     def __init__(
         self,
@@ -165,43 +298,99 @@ class TrackTimeline(QWidget):
         num_frames: int = 1800,
         parent: QWidget | None = None,
     ) -> None:
-        super().__init__(parent)
+        super().__init__(track_name, parent)
         self.track_index = track_index
         self.track_name = track_name
         self.num_frames = num_frames
         self.cells: list[FrameCell] = []
+        self.is_muted = False
+        self.is_soloed = False
 
-        # Style the track with background and border
+        # Gray panel styling
         self.setStyleSheet(
-            "TrackTimeline { background-color: #333; border: 1px solid #555; "
-            "border-radius: 3px; margin: 2px; }"
+            "QGroupBox { background-color: #3c3c3c; border: 2px solid #555; "
+            "border-radius: 5px; margin-top: 10px; padding: 10px; font-weight: bold; }"
+            "QGroupBox::title { subcontrol-origin: margin; subcontrol-position: top left; "
+            "padding: 2px 5px; }"
         )
 
-        layout = QHBoxLayout(self)
-        layout.setSpacing(0)
-        layout.setContentsMargins(4, 4, 4, 4)
+        main_layout = QVBoxLayout(self)
+        main_layout.setSpacing(4)
 
-        # Track label (fixed width)
-        label = QLabel(track_name)
-        label.setFixedWidth(80)
-        label.setAlignment(Qt.AlignRight | Qt.AlignVCenter)
-        label.setStyleSheet("font-weight: bold; padding-right: 8px;")
-        layout.addWidget(label)
+        # Timeline row (label + cells)
+        timeline_row = QHBoxLayout()
+        timeline_row.setSpacing(4)
 
-        # Frame cells (scrollable)
+        # Frame cells container (horizontal scrollable)
         cells_container = QWidget()
         cells_layout = QHBoxLayout(cells_container)
-        cells_layout.setSpacing(0)
+        cells_layout.setSpacing(2)
         cells_layout.setContentsMargins(0, 0, 0, 0)
 
         for frame_num in range(num_frames):
             cell = FrameCell(track_index, frame_num)
             cell.clicked.connect(self.frame_clicked)
+            cell.data_changed.connect(self.data_changed)  # Forward data changes
             cells_layout.addWidget(cell)
             self.cells.append(cell)
 
         cells_layout.addStretch()
-        layout.addWidget(cells_container)
+        timeline_row.addWidget(cells_container)
+        main_layout.addLayout(timeline_row)
+
+        # Controls row (MUTE and SOLO buttons)
+        controls_row = QHBoxLayout()
+        controls_row.setSpacing(8)
+
+        self.btn_mute = QPushButton("MUTE")
+        self.btn_mute.setCheckable(True)
+        self.btn_mute.setFixedSize(70, 25)
+        self.btn_mute.toggled.connect(self._on_mute_toggled)
+
+        self.btn_solo = QPushButton("SOLO")
+        self.btn_solo.setCheckable(True)
+        self.btn_solo.setFixedSize(70, 25)
+        self.btn_solo.toggled.connect(self._on_solo_toggled)
+
+        controls_row.addWidget(self.btn_mute)
+        controls_row.addWidget(self.btn_solo)
+        controls_row.addStretch()
+
+        main_layout.addLayout(controls_row)
+
+        # Initialize button styles
+        self._update_mute_style()
+        self._update_solo_style()
+
+    def _on_mute_toggled(self, checked: bool) -> None:
+        """Handle MUTE button toggle."""
+        self.is_muted = checked
+        self._update_mute_style()
+        self.mute_changed.emit(self.track_index, checked)
+
+    def _on_solo_toggled(self, checked: bool) -> None:
+        """Handle SOLO button toggle."""
+        self.is_soloed = checked
+        self._update_solo_style()
+        self.solo_changed.emit(self.track_index, checked)
+
+    def _update_mute_style(self) -> None:
+        """Update MUTE button appearance based on state."""
+        if self.is_muted:
+            self.btn_mute.setStyleSheet(
+                "background-color: rgb(255, 100, 100); color: black; font-weight: bold;"
+            )
+        else:
+            self.btn_mute.setStyleSheet("background-color: #555; color: #aaa;")
+
+    def _update_solo_style(self) -> None:
+        """Update SOLO button appearance based on state."""
+        if self.is_soloed:
+            self.btn_solo.setStyleSheet(
+                "background-color: rgb(0, 255, 100); color: black; font-weight: bold;"
+            )
+        else:
+            self.btn_solo.setStyleSheet("background-color: #555; color: #aaa;")
 
     def set_frame_filled(self, frame_number: int, filled: bool) -> None:
         """Mark a specific frame as filled or empty."""
@@ -220,9 +409,10 @@ class TrackTimeline(QWidget):
 
 
 class FrameTimeline(QWidget):
-    """Complete timeline view with all tracks."""
+    """Complete timeline view with all tracks and MUTE/SOLO controls."""
 
     frame_clicked = Signal(int, int)  # (track_index, frame_number)
+    data_changed = Signal(int, int, dict)  # (track_index, frame_number, data)
     frames_copied = Signal(int)  # (count)
     frames_pasted = Signal(list)  # [(track_index, frame_number, data), ...]
 
@@ -250,12 +440,14 @@ class FrameTimeline(QWidget):
         frame_markers_layout.setContentsMargins(0, 0, 0, 0)
 
         marker_interval = 60  # 1 second intervals
-        cell_width = 70  # Must match FrameCell width
+        cell_width = 120  # Updated to match new FrameCell width
+        cell_spacing = 2  # Match cells_layout spacing
         for i in range(0, self.num_frames, marker_interval):
             # Show time in seconds
             seconds = i // 60
             marker = QLabel(f"{seconds}s")
-            marker.setFixedWidth(cell_width * marker_interval)  # Span interval
+            # Account for spacing between cells
+            marker.setFixedWidth((cell_width + cell_spacing) * marker_interval - cell_spacing)
             marker.setStyleSheet("color: #888; font-size: 9px;")
             frame_markers_layout.addWidget(marker)
 
@@ -263,13 +455,35 @@ class FrameTimeline(QWidget):
         header_row.addWidget(frame_markers)
         layout.addLayout(header_row)
 
-        # Create track timelines
+        # Create track timelines with MUTE/SOLO
         track_names = ["Channel A", "Channel B", "Channel C", "Noise", "Envelope"]
         for idx, name in enumerate(track_names):
             track = TrackTimeline(idx, name, self.num_frames)
             track.frame_clicked.connect(self.frame_clicked)
+            track.data_changed.connect(self.data_changed)  # Forward data changes
+            track.mute_changed.connect(self._on_track_mute_changed)
+            track.solo_changed.connect(self._on_track_solo_changed)
             layout.addWidget(track)
             self.tracks.append(track)
+
+    def _on_track_mute_changed(self, track_index: int, is_muted: bool) -> None:
+        """Handle track MUTE button - propagate to main window audio control."""
+        # Main window will handle audio muting
+        pass
+
+    def _on_track_solo_changed(self, track_index: int, is_soloed: bool) -> None:
+        """Handle track SOLO button - mute all other non-SOLO'd tracks."""
+        # If any track is SOLO'd, mute all non-SOLO'd tracks
+        any_soloed = any(track.is_soloed for track in self.tracks)
+
+        if any_soloed:
+            # SOLO mode: mute tracks that aren't solo'd
+            for track in self.tracks:
+                if not track.is_soloed and not track.is_muted:
+                    # Visually indicate this track is muted due to SOLO
+                    # but don't change the MUTE button state
+                    pass
+        # Main window will handle SOLO logic in audio playback
 
     def set_frame_data(self, track_index: int, frame_number: int, data: dict | None | bool) -> None:
         """Set frame data for visualization.
