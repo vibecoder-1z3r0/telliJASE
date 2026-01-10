@@ -55,7 +55,13 @@ class LivePSGStream:
         else:
             logger.info(f"LivePSGStream initialized: {sample_rate}Hz, {block_size} samples")
 
-    def _callback(self, outdata: sd.ndarray, frames: int, time: sd.CallbackFlags, status: sd.CallbackFlags) -> None:  # type: ignore
+    def _callback(
+        self,
+        outdata: sd.ndarray,
+        frames: int,
+        time: sd.CallbackFlags,
+        status: sd.CallbackFlags,
+    ) -> None:  # type: ignore
         """Audio callback - called by sounddevice thread to generate samples.
 
         This runs in a separate thread. It takes a snapshot of the current

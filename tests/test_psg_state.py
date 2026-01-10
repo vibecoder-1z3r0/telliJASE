@@ -12,7 +12,7 @@ def test_psg_state_default():
     assert state.channel_a.tone_enabled is True
     assert state.channel_a.noise_enabled is False
 
-    assert state.noise_period == 0
+    assert state.noise_period == 1  # Default to 1 (0 = OFF, 1+ = audible)
     assert state.envelope_period == 0
     assert state.envelope_shape == 0
 

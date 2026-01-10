@@ -57,59 +57,14 @@ class PSGSynthesizer:
         ]
 
         for idx, fine_r, coarse_r, vol_r, tone_bit, noise_bit, phase in channels:
-            # Check mixer enables (R7 uses inverted logic: 0=enabled, 1=disabled)
-            tone_enabled = not bool(r7 & tone_bit)
-            noise_enabled = not bool(r7 & noise_bit)
-
-            if not tone_enabled and not noise_enabled:
-                continue  # Channel fully muted
-
-            # Hardware-accurate digital AND gating
-            # PSG treats tone/noise as digital signals (HIGH/LOW) and uses AND logic
-            if tone_enabled and noise_enabled:
-                # Both enabled: AND gate (output HIGH only when both are HIGH)
-                period = self._read_period(regs, fine_r, coarse_r)
-                freq = period_to_frequency(period)
-                if freq > 0:
-                    tone, new_phase = self._generate_tone(num_samples, freq, phase)
-
-                    # Update phase accumulator
-                    if idx == 0:
-                        self.phase_a = new_phase
-                    elif idx == 1:
-                        self.phase_b = new_phase
-                    else:
-                        self.phase_c = new_phase
-
-                    # Digital AND: output is +1 only when BOTH tone and noise are +1
-                    channel_signal = np.where((tone > 0) & (noise > 0), 1.0, -1.0).astype(np.float32)
-                else:
-                    channel_signal = noise
-            elif tone_enabled:
-                # Tone only
-                period = self._read_period(regs, fine_r, coarse_r)
-                freq = period_to_frequency(period)
-                if freq > 0:
-                    tone, new_phase = self._generate_tone(num_samples, freq, phase)
-                    channel_signal = tone
-
-                    # Update phase accumulator
-                    if idx == 0:
-                        self.phase_a = new_phase
-                    elif idx == 1:
-                        self.phase_b = new_phase
-                    else:
-                        self.phase_c = new_phase
-                else:
-                    channel_signal = np.zeros(num_samples, dtype=np.float32)
-            else:
-                # Noise only
-                channel_signal = noise
-
-            # Apply volume to MIXED signal (this is the key!)
-            volume = regs.get(vol_r, 0) & 0x0F
-            amplitude = volume / 15.0
-            mix += channel_signal * amplitude
+            channel_signal = self._process_channel(
+                idx, fine_r, coarse_r, vol_r, tone_bit, noise_bit,
+                phase, r7, regs, noise, num_samples
+            )
+            if channel_signal is not None:
+                volume = regs.get(vol_r, 0) & 0x0F
+                amplitude = volume / 15.0
+                mix += channel_signal * amplitude
 
         # Normalize to prevent clipping
         max_val = np.max(np.abs(mix))
@@ -117,6 +72,89 @@ class PSGSynthesizer:
             mix = mix / max_val
 
         return np.clip(mix, -1.0, 1.0).astype(np.float32)
+
+    def _process_channel(
+        self,
+        idx: int,
+        fine_r: str,
+        coarse_r: str,
+        vol_r: str,
+        tone_bit: int,
+        noise_bit: int,
+        phase: float,
+        r7: int,
+        regs: dict,
+        noise: np.ndarray,
+        num_samples: int,
+    ) -> np.ndarray | None:
+        """Process a single PSG channel with tone+noise mixing.
+
+        Args:
+            idx: Channel index (0=A, 1=B, 2=C)
+            fine_r: Fine period register name
+            coarse_r: Coarse period register name
+            vol_r: Volume register name
+            tone_bit: Tone enable bit mask for R7
+            noise_bit: Noise enable bit mask for R7
+            phase: Current phase for this channel
+            r7: Mixer register value
+            regs: All PSG registers
+            noise: Pre-generated noise waveform
+            num_samples: Number of samples to generate
+
+        Returns:
+            Channel signal or None if fully muted
+        """
+        # Check mixer enables (R7 uses inverted logic: 0=enabled, 1=disabled)
+        tone_enabled = not bool(r7 & tone_bit)
+        noise_enabled = not bool(r7 & noise_bit)
+
+        if not tone_enabled and not noise_enabled:
+            return None  # Channel fully muted
+
+        # Hardware-accurate digital AND gating
+        # PSG treats tone/noise as digital signals (HIGH/LOW) and uses AND logic
+        if tone_enabled and noise_enabled:
+            # Both enabled: AND gate (output HIGH only when both are HIGH)
+            period = self._read_period(regs, fine_r, coarse_r)
+            freq = period_to_frequency(period)
+            if freq > 0:
+                tone, new_phase = self._generate_tone(num_samples, freq, phase)
+                self._update_phase(idx, new_phase)
+
+                # Digital AND: output is +1 only when BOTH tone and noise are +1
+                return np.where(
+                    (tone > 0) & (noise > 0), 1.0, -1.0
+                ).astype(np.float32)
+            else:
+                return noise
+        elif tone_enabled:
+            # Tone only
+            period = self._read_period(regs, fine_r, coarse_r)
+            freq = period_to_frequency(period)
+            if freq > 0:
+                tone, new_phase = self._generate_tone(num_samples, freq, phase)
+                self._update_phase(idx, new_phase)
+                return tone
+            else:
+                return np.zeros(num_samples, dtype=np.float32)
+        else:
+            # Noise only
+            return noise
+
+    def _update_phase(self, channel_idx: int, new_phase: float) -> None:
+        """Update phase accumulator for a channel.
+
+        Args:
+            channel_idx: Channel index (0=A, 1=B, 2=C)
+            new_phase: New phase value
+        """
+        if channel_idx == 0:
+            self.phase_a = new_phase
+        elif channel_idx == 1:
+            self.phase_b = new_phase
+        else:
+            self.phase_c = new_phase
 
     def _generate_tone(
         self, num_samples: int, freq: float, phase: float
