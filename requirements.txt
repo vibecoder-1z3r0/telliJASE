@@ -9,4 +9,4 @@ numpy>=1.21.0; python_version >= "3.10"
 
 # Audio backends
 sounddevice>=0.4.6
-pygame>=2.1.0
+pygame-ce>=2.1.0
