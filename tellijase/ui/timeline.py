@@ -61,7 +61,7 @@ class FrameCell(QWidget):
         v_label.setStyleSheet("color: #ccc; font-size: 8px;")
         self.vol_spin = QSpinBox()
         self.vol_spin.setRange(0, 15)
-        self.vol_spin.setValue(10)
+        self.vol_spin.setValue(0)  # Default to silent
         self.vol_spin.setFixedWidth(35)
         self.vol_spin.valueChanged.connect(self._on_data_changed)
 
@@ -205,7 +205,7 @@ class FrameCell(QWidget):
             # Empty frame - disable widgets and reset to defaults
             self._set_widgets_enabled(False)
             self.freq_spin.setValue(440)
-            self.vol_spin.setValue(10)
+            self.vol_spin.setValue(0)  # Default to silent
             self.dur_spin.setValue(1)
             self.btn_tone.setChecked(True)
             self.btn_noise.setChecked(False)
@@ -256,7 +256,7 @@ class FrameCell(QWidget):
             self.set_data(
                 {
                     "frequency": 440,
-                    "volume": 10,
+                    "volume": 0,  # Default to silent
                     "tone_enabled": True,
                     "noise_enabled": False,
                     "deactivated": False,
@@ -642,7 +642,7 @@ class FrameEditor(QGroupBox):
         vol_row.addWidget(QLabel("Volume (0-15):"))
         self.vol_spin = QSpinBox()
         self.vol_spin.setRange(0, 15)
-        self.vol_spin.setValue(10)
+        self.vol_spin.setValue(0)  # Default to silent
         self.vol_spin.setEnabled(False)
         vol_row.addWidget(self.vol_spin)
         vol_row.addStretch()
@@ -749,7 +749,7 @@ class FrameEditor(QGroupBox):
         if data is None:
             # Reset to defaults for empty frame
             self.freq_spin.setValue(440)
-            self.vol_spin.setValue(10)
+            self.vol_spin.setValue(0)  # Default to silent
             self.dur_spin.setValue(1)
             self.btn_tone_enable.setChecked(True)
             self.btn_noise_enable.setChecked(False)
