@@ -13,6 +13,7 @@ from PySide6.QtGui import QAction
 from PySide6.QtWidgets import (
     QApplication,
     QFileDialog,
+    QGroupBox,
     QHBoxLayout,
     QLabel,
     QLineEdit,
@@ -169,11 +170,11 @@ class MainWindow(QMainWindow):
         layout.addLayout(channel_row)
 
         # Noise period control (shared across all channels)
-        noise_group = QWidget()
+        noise_group = QGroupBox("Noise")
         noise_layout = QVBoxLayout(noise_group)
         noise_layout.setContentsMargins(20, 10, 20, 10)
 
-        self.noise_label = QLabel("Noise Period: 0 (disabled)")
+        self.noise_label = QLabel("Period: 0 (OFF)")
         noise_layout.addWidget(self.noise_label)
 
         # Horizontal layout with slider and text input
@@ -181,6 +182,9 @@ class MainWindow(QMainWindow):
         self.noise_slider = QSlider(Qt.Horizontal)
         self.noise_slider.setRange(0, 31)  # R6 is 5 bits (0-31)
         self.noise_slider.setValue(0)
+        self.noise_slider.setTickPosition(QSlider.TicksBelow)
+        self.noise_slider.setTickInterval(1)  # Tick for each period value
+        self.noise_slider.setPageStep(1)  # Click on track moves by 1
         self.noise_slider.valueChanged.connect(self._on_noise_slider_changed)
 
         self.noise_input = QLineEdit()
@@ -432,12 +436,12 @@ class MainWindow(QMainWindow):
         self.noise_input.setText(str(value))
         self.noise_input.blockSignals(False)
         if value == 0:
-            self.noise_label.setText("Noise Period: 0 (disabled)")
+            self.noise_label.setText("Period: 0 (OFF)")
         else:
             # Show period value and approximate frequency
             from tellijase.psg.utils import CLOCK_HZ
             freq = CLOCK_HZ / (32.0 * value) if value > 0 else 0
-            self.noise_label.setText(f"Noise Period: {value} (~{freq:.0f} Hz)")
+            self.noise_label.setText(f"Period: {value} (~{freq:.0f} Hz)")
         self._update_register_display()
 
     def _on_noise_input_changed(self) -> None:
@@ -452,11 +456,11 @@ class MainWindow(QMainWindow):
             self.noise_input.setText(str(value))  # Show clamped value
             self.current_state.noise_period = value
             if value == 0:
-                self.noise_label.setText("Noise Period: 0 (disabled)")
+                self.noise_label.setText("Period: 0 (OFF)")
             else:
                 from tellijase.psg.utils import CLOCK_HZ
                 freq = CLOCK_HZ / (32.0 * value) if value > 0 else 0
-                self.noise_label.setText(f"Noise Period: {value} (~{freq:.0f} Hz)")
+                self.noise_label.setText(f"Period: {value} (~{freq:.0f} Hz)")
             self._update_register_display()
         except ValueError:
             # Invalid input - restore from slider
