@@ -12,6 +12,7 @@ from PySide6.QtCore import Qt, QTimer
 from PySide6.QtGui import QAction
 from PySide6.QtWidgets import (
     QApplication,
+    QComboBox,
     QFileDialog,
     QGroupBox,
     QHBoxLayout,
@@ -33,8 +34,9 @@ from tellijase import __version__
 from tellijase.audio.stream import LivePSGStream, SOUNDDEVICE_AVAILABLE
 from tellijase.audio.pygame_player import PygamePSGPlayer, PYGAME_AVAILABLE
 from tellijase.models import PSGState
-from tellijase.storage import JamSession, Project, load_project, new_project, save_project
+from tellijase.storage import JamSession, Project, Song, load_project, new_project, save_project
 from tellijase.ui.jam_controls import ChannelControl
+from tellijase.ui.timeline import FrameTimeline, FrameEditor
 
 logger = logging.getLogger(__name__)
 
@@ -150,13 +152,33 @@ class MainWindow(QMainWindow):
         layout.addWidget(QLabel("<h3>JAM Sessions</h3>"))
         layout.addWidget(QLabel("Realtime AY-3-8914 playground. Capture snapshots as sessions."))
 
+        # Session management row (like telliGRAM's animation dropdown)
+        session_row = QHBoxLayout()
+        session_row.addWidget(QLabel("Saved Sessions:"))
+        self.session_combo = QComboBox()
+        self.session_combo.setMinimumWidth(200)
+        self.session_combo.currentIndexChanged.connect(self._on_session_selected)
+        session_row.addWidget(self.session_combo)
+
+        self.btn_load_session = QPushButton("Load")
+        self.btn_load_session.clicked.connect(self._on_load_session)
+        session_row.addWidget(self.btn_load_session)
+
+        self.btn_save_session = QPushButton("Save Current")
+        self.btn_save_session.clicked.connect(self._on_save_current_session)
+        session_row.addWidget(self.btn_save_session)
+
+        self.btn_new_session = QPushButton("New Session...")
+        self.btn_new_session.clicked.connect(self._on_new_session)
+        session_row.addWidget(self.btn_new_session)
+
+        session_row.addStretch()
+        layout.addLayout(session_row)
+
+        # Playback controls
         button_row = QHBoxLayout()
-        self.btn_new_session = QPushButton("New JAM Session")
-        self.btn_snapshot = QPushButton("Snapshot Current State")
         self.btn_play = QPushButton("Play Preview")
         self.btn_stop = QPushButton("Stop")
-        button_row.addWidget(self.btn_new_session)
-        button_row.addWidget(self.btn_snapshot)
         button_row.addWidget(self.btn_play)
         button_row.addWidget(self.btn_stop)
         button_row.addStretch()
@@ -255,27 +277,79 @@ class MainWindow(QMainWindow):
     def _build_frame_tab(self) -> QWidget:
         widget = QWidget()
         layout = QVBoxLayout(widget)
-        layout.addWidget(QLabel("<h3>FRAME Sequencer</h3>"))
-        layout.addWidget(QLabel("Keyframe timeline reminiscent of telliGRAM's animation editor."))
+        layout.setSpacing(8)
 
+        layout.addWidget(QLabel("<h3>FRAME Sequencer</h3>"))
+        layout.addWidget(QLabel("Tracker-style timeline for frame-by-frame composition."))
+
+        # Sequence management row (like JAM sessions dropdown)
+        sequence_row = QHBoxLayout()
+        sequence_row.addWidget(QLabel("Sequences:"))
+        self.sequence_combo = QComboBox()
+        self.sequence_combo.setMinimumWidth(200)
+        self.sequence_combo.currentIndexChanged.connect(self._on_sequence_selected)
+        sequence_row.addWidget(self.sequence_combo)
+
+        self.btn_load_sequence = QPushButton("Load")
+        self.btn_load_sequence.clicked.connect(self._on_load_sequence)
+        sequence_row.addWidget(self.btn_load_sequence)
+
+        self.btn_save_sequence = QPushButton("Save Current")
+        self.btn_save_sequence.clicked.connect(self._on_save_current_sequence)
+        sequence_row.addWidget(self.btn_save_sequence)
+
+        self.btn_new_sequence = QPushButton("New Sequence...")
+        self.btn_new_sequence.clicked.connect(self._on_new_sequence)
+        sequence_row.addWidget(self.btn_new_sequence)
+
+        sequence_row.addStretch()
+        layout.addLayout(sequence_row)
+
+        # Transport controls
         transport = QHBoxLayout()
-        for label in ("Play", "Pause", "Stop", "Loop"):
-            button = QPushButton(label)
-            button.setEnabled(False)
-            transport.addWidget(button)
+        self.btn_frame_play = QPushButton("Play")
+        self.btn_frame_pause = QPushButton("Pause")
+        self.btn_frame_stop = QPushButton("Stop")
+        self.btn_frame_loop = QPushButton("Loop")
+        self.btn_frame_loop.setCheckable(True)
+
+        for btn in (
+            self.btn_frame_play,
+            self.btn_frame_pause,
+            self.btn_frame_stop,
+            self.btn_frame_loop,
+        ):
+            btn.setEnabled(False)  # Enable when playback is implemented
+            transport.addWidget(btn)
+
         transport.addStretch()
         layout.addLayout(transport)
 
-        self.timeline_placeholder = QLabel("Timeline grid placeholder based on For-Codex.png")
-        self.timeline_placeholder.setAlignment(Qt.AlignCenter)
-        self.timeline_placeholder.setStyleSheet("border: 1px dashed #888; padding: 40px;")
-        layout.addWidget(self.timeline_placeholder, stretch=1)
+        # Main timeline and editor layout
+        content_layout = QHBoxLayout()
+
+        # Timeline (scrollable)
+        from PySide6.QtWidgets import QScrollArea
+
+        scroll = QScrollArea()
+        scroll.setWidgetResizable(True)
+        scroll.setHorizontalScrollBarPolicy(Qt.ScrollBarAlwaysOn)
+        scroll.setVerticalScrollBarPolicy(Qt.ScrollBarAsNeeded)
+
+        self.timeline = FrameTimeline()
+        self.timeline.frame_clicked.connect(self._on_frame_clicked)
+        scroll.setWidget(self.timeline)
+        content_layout.addWidget(scroll, stretch=3)
+
+        # Frame editor panel
+        self.frame_editor = FrameEditor()
+        content_layout.addWidget(self.frame_editor, stretch=1)
+
+        layout.addLayout(content_layout, stretch=1)
         return widget
 
     def _connect_signals(self) -> None:
         """Connect UI signals to model updates - clean model-view separation."""
-        self.btn_new_session.clicked.connect(self._on_new_session)
-        self.btn_snapshot.clicked.connect(self._on_snapshot)
         self.btn_play.clicked.connect(self._on_play_audio)
         self.btn_stop.clicked.connect(self._on_stop_audio)
 
@@ -310,6 +384,12 @@ class MainWindow(QMainWindow):
 
         # Update register display with initial state
         self._update_register_display()
+
+        # Populate session dropdown
+        self._refresh_session_list()
+
+        # Populate sequence dropdown
+        self._refresh_sequence_list()
 
         if not self.audio_available:
             self.btn_play.setEnabled(False)
@@ -413,28 +493,198 @@ class MainWindow(QMainWindow):
         )
 
     # JAM Mode Callbacks ----------------------------------------------
+    def _refresh_session_list(self) -> None:
+        """Refresh the session dropdown with current project sessions."""
+        self.session_combo.blockSignals(True)
+        self.session_combo.clear()
+
+        if not self.project.jam_sessions:
+            self.session_combo.addItem("(No saved sessions)")
+            self.session_combo.setEnabled(False)
+            self.btn_load_session.setEnabled(False)
+        else:
+            for session in self.project.jam_sessions:
+                self.session_combo.addItem(session.name)
+            self.session_combo.setEnabled(True)
+            self.btn_load_session.setEnabled(True)
+            # Select the last session by default
+            self.session_combo.setCurrentIndex(len(self.project.jam_sessions) - 1)
+
+        self.session_combo.blockSignals(False)
+
+    def _on_session_selected(self, index: int) -> None:
+        """Session dropdown selection changed."""
+        # Just update UI to show which session is selected
+        # Actual loading happens when Load button is clicked
+        pass
+
     def _on_new_session(self) -> None:
-        """Create a new JAM session snapshot."""
-        new_id = f"jam-{len(self.project.jam_sessions) + 1}"
+        """Create a new JAM session with current state."""
+        from PySide6.QtWidgets import QInputDialog
+
+        name, ok = QInputDialog.getText(
+            self,
+            "New JAM Session",
+            "Session name:",
+            QLineEdit.Normal,
+            f"Session {len(self.project.jam_sessions) + 1}",
+        )
+
+        if not ok or not name.strip():
+            return
+
+        new_id = f"jam-{datetime.utcnow().timestamp()}"
         session = JamSession(
             id=new_id,
-            name=f"Session {len(self.project.jam_sessions) + 1}",
+            name=name.strip(),
             registers=self.current_state.to_registers(),
         )
         self.project.jam_sessions.append(session)
         self.project.touch()
-        self.statusBar().showMessage(f"Added {session.name}", 3000)
+        self._refresh_session_list()
+        self.statusBar().showMessage(f"Created session: {session.name}", 3000)
 
-    def _on_snapshot(self) -> None:
-        """Save current PSG state to the active session."""
+    def _on_save_current_session(self) -> None:
+        """Save current PSG state to the selected session."""
         if not self.project.jam_sessions:
             self._on_new_session()
             return
-        session = self.project.jam_sessions[-1]
+
+        index = self.session_combo.currentIndex()
+        if index < 0 or index >= len(self.project.jam_sessions):
+            return
+
+        session = self.project.jam_sessions[index]
         session.registers = self.current_state.to_registers()
         session.updated = datetime.utcnow().isoformat()
         self.project.touch()
-        self.statusBar().showMessage(f"Snapshot saved to {session.name}", 3000)
+        self.statusBar().showMessage(f"Saved to session: {session.name}", 3000)
+
+    def _on_load_session(self) -> None:
+        """Load selected session into current JAM controls."""
+        if not self.project.jam_sessions:
+            return
+
+        index = self.session_combo.currentIndex()
+        if index < 0 or index >= len(self.project.jam_sessions):
+            return
+
+        session = self.project.jam_sessions[index]
+
+        # Load PSG state from session registers
+        self.current_state = PSGState.from_registers(session.registers)
+
+        # Update all UI controls from the loaded state
+        for idx, control in enumerate(self.channel_controls):
+            if idx == 0:
+                channel = self.current_state.channel_a
+            elif idx == 1:
+                channel = self.current_state.channel_b
+            else:
+                channel = self.current_state.channel_c
+
+            control.set_state(
+                frequency=channel.frequency,
+                volume=channel.volume,
+                tone_enabled=channel.tone_enabled,
+                noise_enabled=channel.noise_enabled,
+            )
+
+        # Update noise control
+        self.noise_slider.setValue(self.current_state.noise_period)
+
+        # Update register display
+        self._update_register_display()
+
+        self.statusBar().showMessage(f"Loaded session: {session.name}", 3000)
+
+    # FRAME Mode Callbacks --------------------------------------------
+    def _refresh_sequence_list(self) -> None:
+        """Refresh the sequence dropdown with current project songs."""
+        self.sequence_combo.blockSignals(True)
+        self.sequence_combo.clear()
+
+        if not self.project.songs:
+            self.sequence_combo.addItem("(No saved sequences)")
+            self.sequence_combo.setEnabled(False)
+            self.btn_load_sequence.setEnabled(False)
+        else:
+            for song in self.project.songs:
+                self.sequence_combo.addItem(song.name)
+            self.sequence_combo.setEnabled(True)
+            self.btn_load_sequence.setEnabled(True)
+            # Select the last sequence by default
+            self.sequence_combo.setCurrentIndex(len(self.project.songs) - 1)
+
+        self.sequence_combo.blockSignals(False)
+
+    def _on_sequence_selected(self, index: int) -> None:
+        """Sequence dropdown selection changed."""
+        # Just update UI to show which sequence is selected
+        # Actual loading happens when Load button is clicked
+        pass
+
+    def _on_new_sequence(self) -> None:
+        """Create a new FRAME sequence."""
+        from PySide6.QtWidgets import QInputDialog
+
+        name, ok = QInputDialog.getText(
+            self,
+            "New Sequence",
+            "Sequence name:",
+            QLineEdit.Normal,
+            f"Sequence {len(self.project.songs) + 1}",
+        )
+
+        if not ok or not name.strip():
+            return
+
+        new_id = f"song-{datetime.utcnow().timestamp()}"
+        song = Song(
+            id=new_id,
+            name=name.strip(),
+            bpm=120,
+            loop=False,
+            tracks={},  # Empty timeline
+        )
+        self.project.songs.append(song)
+        self.project.touch()
+        self._refresh_sequence_list()
+        self.statusBar().showMessage(f"Created sequence: {song.name}", 3000)
+
+    def _on_save_current_sequence(self) -> None:
+        """Save current timeline to the selected sequence."""
+        if not self.project.songs:
+            self._on_new_sequence()
+            return
+
+        index = self.sequence_combo.currentIndex()
+        if index < 0 or index >= len(self.project.songs):
+            return
+
+        song = self.project.songs[index]
+        # TODO: Collect timeline data and save to song.tracks
+        song.updated = datetime.utcnow().isoformat()  # type: ignore
+        self.project.touch()
+        self.statusBar().showMessage(f"Saved to sequence: {song.name}", 3000)
+
+    def _on_load_sequence(self) -> None:
+        """Load selected sequence into timeline."""
+        if not self.project.songs:
+            return
+
+        index = self.sequence_combo.currentIndex()
+        if index < 0 or index >= len(self.project.songs):
+            return
+
+        song = self.project.songs[index]
+        # TODO: Load song.tracks into timeline UI
+        self.statusBar().showMessage(f"Loaded sequence: {song.name}", 3000)
+
+    def _on_frame_clicked(self, track_index: int, frame_number: int) -> None:
+        """Frame cell clicked - open editor for that frame."""
+        self.frame_editor.set_frame(track_index, frame_number)
+        self.statusBar().showMessage(f"Editing Track {track_index} Frame {frame_number}", 2000)
 
     def _on_noise_slider_changed(self, value: int) -> None:
         """Noise period slider changed - update text input and PSG state."""
