@@ -37,7 +37,7 @@ class FrameCell(QWidget):
         self.is_filled = False
         self.frame_data = None
 
-        self.setFixedSize(120, 80)  # Larger to fit widgets
+        self.setFixedSize(120, 95)  # Larger to fit widgets (added duration row)
         self.setFocusPolicy(Qt.StrongFocus)
 
         # Main layout
@@ -90,6 +90,18 @@ class FrameCell(QWidget):
         layout.addWidget(self.btn_tone, 2, 0)
         layout.addWidget(self.btn_noise, 2, 1)
 
+        # Row 4: Dur [duration]
+        dur_label = QLabel("Dur:")
+        dur_label.setStyleSheet("color: #ccc; font-size: 9px;")
+        self.dur_spin = QSpinBox()
+        self.dur_spin.setRange(1, 300)  # 1-300 frames (up to 5 seconds at 60 FPS)
+        self.dur_spin.setValue(1)
+        self.dur_spin.setFixedWidth(50)
+        self.dur_spin.valueChanged.connect(self._on_duration_changed)
+
+        layout.addWidget(dur_label, 3, 0, Qt.AlignLeft)
+        layout.addWidget(self.dur_spin, 3, 0, Qt.AlignRight)
+
         # Initially disabled until frame is activated
         self._set_widgets_enabled(False)
 
@@ -97,6 +109,7 @@ class FrameCell(QWidget):
         """Enable or disable all interactive widgets."""
         self.freq_spin.setEnabled(enabled and self.track_index < 3)  # Only tone channels
         self.vol_spin.setEnabled(enabled)
+        self.dur_spin.setEnabled(enabled)
         self.btn_tone.setEnabled(enabled and self.track_index < 3)
         self.btn_noise.setEnabled(enabled and self.track_index < 3)
         self.btn_deactivate.setEnabled(enabled)
@@ -121,6 +134,10 @@ class FrameCell(QWidget):
         self._update_button_style(self.btn_deactivate, checked, QColor(255, 100, 100))
         self._on_data_changed()
 
+    def _on_duration_changed(self, value: int) -> None:
+        """Duration spinbox changed - emit data and update continuations."""
+        self._on_data_changed()
+
     def _update_button_style(
         self, button: QPushButton, checked: bool, active_color: QColor
     ) -> None:
@@ -141,7 +158,7 @@ class FrameCell(QWidget):
             "tone_enabled": self.btn_tone.isChecked() if self.track_index < 3 else None,
             "noise_enabled": self.btn_noise.isChecked() if self.track_index < 3 else None,
             "deactivated": self.btn_deactivate.isChecked(),
-            "duration": 1,  # Default duration, can be modified later
+            "duration": self.dur_spin.value(),  # Get from spinbox
         }
         self.data_changed.emit(self.track_index, self.frame_number, data)
 
@@ -179,6 +196,7 @@ class FrameCell(QWidget):
         # Block signals while updating to avoid triggering data_changed
         self.freq_spin.blockSignals(True)
         self.vol_spin.blockSignals(True)
+        self.dur_spin.blockSignals(True)
         self.btn_tone.blockSignals(True)
         self.btn_noise.blockSignals(True)
         self.btn_deactivate.blockSignals(True)
@@ -188,6 +206,7 @@ class FrameCell(QWidget):
             self._set_widgets_enabled(False)
             self.freq_spin.setValue(440)
             self.vol_spin.setValue(10)
+            self.dur_spin.setValue(1)
             self.btn_tone.setChecked(True)
             self.btn_noise.setChecked(False)
             self.btn_deactivate.setChecked(False)
@@ -197,6 +216,8 @@ class FrameCell(QWidget):
                 self.freq_spin.setValue(int(data["frequency"]))
             if data.get("volume") is not None:
                 self.vol_spin.setValue(int(data["volume"]))
+            if data.get("duration") is not None:
+                self.dur_spin.setValue(int(data["duration"]))
             if data.get("tone_enabled") is not None:
                 self.btn_tone.setChecked(bool(data["tone_enabled"]))
             if data.get("noise_enabled") is not None:
@@ -219,6 +240,7 @@ class FrameCell(QWidget):
         # Unblock signals
         self.freq_spin.blockSignals(False)
         self.vol_spin.blockSignals(False)
+        self.dur_spin.blockSignals(False)
         self.btn_tone.blockSignals(False)
         self.btn_noise.blockSignals(False)
         self.btn_deactivate.blockSignals(False)
@@ -295,7 +317,7 @@ class TrackTimeline(QGroupBox):
         self,
         track_index: int,
         track_name: str,
-        num_frames: int = 1800,
+        num_frames: int = 120,  # Reduced from 1800 for better performance (2 sec at 60 FPS)
         parent: QWidget | None = None,
     ) -> None:
         super().__init__(track_name, parent)
@@ -443,7 +465,7 @@ class FrameTimeline(QWidget):
 
     def __init__(self, parent: QWidget | None = None) -> None:
         super().__init__(parent)
-        self.num_frames = 1800  # 30 seconds at 60 FPS
+        self.num_frames = 120  # Reduced from 1800 for performance (2 sec at 60 FPS)
         self.tracks: list[TrackTimeline] = []
         self.clipboard = []  # Store copied frame data: [(track_idx, frame_num, data), ...]
         self.setFocusPolicy(Qt.StrongFocus)  # Allow keyboard events
