@@ -15,11 +15,11 @@ class PSGChannel:
     mixer enables) rather than low-level register values.
     """
 
-    frequency: float = 440.0        # Hz (will be clamped to valid range)
-    volume: int = 12                # 0-15
-    tone_enabled: bool = True       # R7 mixer bit for tone
-    noise_enabled: bool = False     # R7 mixer bit for noise
-    envelope_mode: bool = False     # Use envelope generator for volume
+    frequency: float = 440.0  # Hz (will be clamped to valid range)
+    volume: int = 12  # 0-15
+    tone_enabled: bool = True  # R7 mixer bit for tone
+    noise_enabled: bool = False  # R7 mixer bit for noise
+    envelope_mode: bool = False  # Use envelope generator for volume
 
     def __post_init__(self) -> None:
         """Validate and clamp parameters to valid ranges."""

@@ -314,9 +314,7 @@ class MainWindow(QMainWindow):
         if not self.audio_available:
             self.btn_play.setEnabled(False)
             self.btn_stop.setEnabled(False)
-            self.jam_status_label.setText(
-                "⚠️ Audio unavailable (no backend found)"
-            )
+            self.jam_status_label.setText("⚠️ Audio unavailable (no backend found)")
             self.jam_status_label.setStyleSheet("color: orange; font-weight: bold;")
         else:
             self.jam_status_label.setText(f"Audio: {self.audio_backend}")
@@ -411,7 +409,7 @@ class MainWindow(QMainWindow):
             "Atari Interactive, Inc.</small></p>"
             "<p><i><a href='https://aiattribution.github.io/statements/"
             "AIA-PAI-Nc-Hin-R-?model=Claude%20Code%20%5BSonnet%204.5%5D-v1.0'>"
-            "AIA PAI Nc Hin R Claude Code [Sonnet 4.5] v1.0</a></i></p>"
+            "AIA PAI Nc Hin R Claude Code [Sonnet 4.5] v1.0</a></i></p>",
         )
 
     # JAM Mode Callbacks ----------------------------------------------
@@ -449,6 +447,7 @@ class MainWindow(QMainWindow):
         else:
             # Show period value and approximate frequency
             from tellijase.psg.utils import CLOCK_HZ
+
             freq = CLOCK_HZ / (32.0 * value) if value > 0 else 0
             self.noise_label.setText(f"Period: {value} (~{freq:.0f} Hz)")
         self._update_register_display()
@@ -468,6 +467,7 @@ class MainWindow(QMainWindow):
                 self.noise_label.setText("Period: 0 (OFF)")
             else:
                 from tellijase.psg.utils import CLOCK_HZ
+
                 freq = CLOCK_HZ / (32.0 * value) if value > 0 else 0
                 self.noise_label.setText(f"Period: {value} (~{freq:.0f} Hz)")
             self._update_register_display()
@@ -517,12 +517,12 @@ class MainWindow(QMainWindow):
         output_lines = []
 
         # Decode mixer
-        r7 = regs.get('R7', 0xFF)
+        r7 = regs.get("R7", 0xFF)
 
         # Channel A
-        period_a = (regs.get('R1', 0) << 8) | regs.get('R0', 0)
+        period_a = (regs.get("R1", 0) << 8) | regs.get("R0", 0)
         freq_a = period_to_frequency(period_a)
-        vol_a = regs.get('R10', 0) & 0x0F
+        vol_a = regs.get("R10", 0) & 0x0F
         tone_a = "Tone" if not (r7 & 0x01) else ""
         noise_a = "Noise" if not (r7 & 0x08) else ""
         mix_a = "+".join(filter(None, [tone_a, noise_a])) or "NONE"
@@ -533,9 +533,9 @@ class MainWindow(QMainWindow):
         output_lines.append("")
 
         # Channel B
-        period_b = (regs.get('R3', 0) << 8) | regs.get('R2', 0)
+        period_b = (regs.get("R3", 0) << 8) | regs.get("R2", 0)
         freq_b = period_to_frequency(period_b)
-        vol_b = regs.get('R11', 0) & 0x0F
+        vol_b = regs.get("R11", 0) & 0x0F
         tone_b = "Tone" if not (r7 & 0x02) else ""
         noise_b = "Noise" if not (r7 & 0x10) else ""
         mix_b = "+".join(filter(None, [tone_b, noise_b])) or "NONE"
@@ -546,9 +546,9 @@ class MainWindow(QMainWindow):
         output_lines.append("")
 
         # Channel C
-        period_c = (regs.get('R5', 0) << 8) | regs.get('R4', 0)
+        period_c = (regs.get("R5", 0) << 8) | regs.get("R4", 0)
         freq_c = period_to_frequency(period_c)
-        vol_c = regs.get('R12', 0) & 0x0F
+        vol_c = regs.get("R12", 0) & 0x0F
         tone_c = "Tone" if not (r7 & 0x04) else ""
         noise_c = "Noise" if not (r7 & 0x20) else ""
         mix_c = "+".join(filter(None, [tone_c, noise_c])) or "NONE"
@@ -559,7 +559,7 @@ class MainWindow(QMainWindow):
         output_lines.append("")
 
         # Noise
-        noise_period = regs.get('R6', 0)
+        noise_period = regs.get("R6", 0)
         if noise_period > 0:
             noise_freq = period_to_frequency(noise_period)
             output_lines.append(f"Noise: {noise_freq:6.1f} Hz (period={noise_period})")
@@ -593,18 +593,14 @@ class MainWindow(QMainWindow):
 
         # Current backend failed - try fallback to pygame
         if self.audio_backend == "sounddevice" and PYGAME_AVAILABLE:
-            logger.warning(
-                "sounddevice failed to start, falling back to pygame"
-            )
+            logger.warning("sounddevice failed to start, falling back to pygame")
             try:
                 self.audio_stream = PygamePSGPlayer(self.current_state)
                 self.audio_backend = "pygame"
                 if self.audio_stream.start():
                     self.btn_play.setEnabled(False)
                     self.btn_stop.setEnabled(True)
-                    self.jam_status_label.setText(
-                        f"Audio: {self.audio_backend} (fallback)"
-                    )
+                    self.jam_status_label.setText(f"Audio: {self.audio_backend} (fallback)")
                     self.jam_status_label.setStyleSheet("color: orange;")
                     self.statusBar().showMessage(
                         f"Playing with {self.audio_backend} (fallback)…", 3000
