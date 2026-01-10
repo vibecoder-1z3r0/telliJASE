@@ -32,11 +32,18 @@ class FrameCell(QWidget):
         self.is_filled = False
         self.frame_data = None  # Store actual frame data for visualization
         self.is_highlighted = False  # Playback position highlight
+        self.is_selected = False  # Selection state for copy/paste
         self.setFixedSize(70, 55)  # Larger size for text labels
+        self.setFocusPolicy(Qt.StrongFocus)  # Allow keyboard focus
 
     def set_highlighted(self, highlighted: bool) -> None:
         """Set playback position highlight."""
         self.is_highlighted = highlighted
+        self.update()
+
+    def set_selected(self, selected: bool) -> None:
+        """Set selection state for copy/paste."""
+        self.is_selected = selected
         self.update()
 
     def set_data(self, data: dict | None) -> None:
@@ -68,9 +75,11 @@ class FrameCell(QWidget):
         else:
             painter.fillRect(self.rect(), QColor(42, 42, 42))
 
-        # Border (highlight playback position with bright border)
+        # Border (highlight playback position and selection)
         if self.is_highlighted:
-            painter.setPen(QPen(QColor(255, 255, 0), 3))  # Yellow highlight
+            painter.setPen(QPen(QColor(255, 255, 0), 3))  # Yellow highlight for playback
+        elif self.is_selected:
+            painter.setPen(QPen(QColor(0, 255, 255), 2))  # Cyan for selection
         elif self.is_filled:
             painter.setPen(QPen(QColor(0, 170, 255), 1))
         else:
@@ -127,8 +136,21 @@ class FrameCell(QWidget):
 
     def mousePressEvent(self, event) -> None:
         """Handle click on this cell."""
-        self.clicked.emit(self.track_index, self.frame_number)
+        from PySide6.QtCore import Qt as QtCore_Qt
+
+        # Ctrl+Click = toggle selection
+        if event.modifiers() & QtCore_Qt.ControlModifier:
+            self.set_selected(not self.is_selected)
+        # Regular click = edit (emit signal to Frame Editor)
+        else:
+            self.clicked.emit(self.track_index, self.frame_number)
         super().mousePressEvent(event)
+
+    def mouseDoubleClickEvent(self, event) -> None:
+        """Handle double-click for inline editing."""
+        # For now, just emit clicked - inline editing can be added later
+        self.clicked.emit(self.track_index, self.frame_number)
+        super().mouseDoubleClickEvent(event)
 
 
 class TrackTimeline(QWidget):
@@ -201,11 +223,14 @@ class FrameTimeline(QWidget):
     """Complete timeline view with all tracks."""
 
     frame_clicked = Signal(int, int)  # (track_index, frame_number)
+    frames_pasted = Signal(list)  # [(track_index, frame_number, data), ...]
 
     def __init__(self, parent: QWidget | None = None) -> None:
         super().__init__(parent)
         self.num_frames = 1800  # 30 seconds at 60 FPS
         self.tracks: list[TrackTimeline] = []
+        self.clipboard = []  # Store copied frame data: [(track_idx, frame_num, data), ...]
+        self.setFocusPolicy(Qt.StrongFocus)  # Allow keyboard events
 
         layout = QVBoxLayout(self)
         layout.setSpacing(2)
@@ -273,6 +298,47 @@ class FrameTimeline(QWidget):
         for track in self.tracks:
             for idx, cell in enumerate(track.cells):
                 cell.set_highlighted(idx == frame_number)
+
+    def keyPressEvent(self, event) -> None:
+        """Handle keyboard shortcuts for copy/paste."""
+        from PySide6.QtCore import Qt as QtCore_Qt
+        from PySide6.QtGui import QKeySequence
+
+        if event.matches(QKeySequence.Copy):  # Ctrl+C
+            self._copy_selected()
+        elif event.matches(QKeySequence.Paste):  # Ctrl+V
+            self._paste()
+        elif event.matches(QKeySequence.SelectAll):  # Ctrl+A
+            self._select_all()
+        else:
+            super().keyPressEvent(event)
+
+    def _copy_selected(self) -> None:
+        """Copy selected frames to clipboard."""
+        self.clipboard = []
+        for track_idx, track in enumerate(self.tracks):
+            for cell in track.cells:
+                if cell.is_selected and cell.frame_data:
+                    self.clipboard.append((track_idx, cell.frame_number, cell.frame_data.copy()))
+
+    def _paste(self) -> None:
+        """Paste clipboard data - emit signal for main window to handle."""
+        if self.clipboard:
+            # Emit signal with clipboard data for main window to apply
+            self.frames_pasted.emit(self.clipboard)
+
+    def get_clipboard_info(self) -> str:
+        """Get human-readable clipboard info for status messages."""
+        if not self.clipboard:
+            return "Clipboard empty"
+        return f"{len(self.clipboard)} frame(s) copied"
+
+    def _select_all(self) -> None:
+        """Select all filled frames."""
+        for track in self.tracks:
+            for cell in track.cells:
+                if cell.is_filled:
+                    cell.set_selected(True)
 
 
 class FrameEditor(QGroupBox):
