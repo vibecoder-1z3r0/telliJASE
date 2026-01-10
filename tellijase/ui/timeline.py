@@ -398,7 +398,7 @@ class TrackTimeline(QGroupBox):
             self.cells[frame_number].set_filled(filled)
 
     def set_frame_data(self, frame_number: int, data: dict | None) -> None:
-        """Set frame data with visualization.
+        """Set frame data with visualization and handle duration/continuation.
 
         Args:
             frame_number: Frame index
@@ -406,6 +406,31 @@ class TrackTimeline(QGroupBox):
         """
         if 0 <= frame_number < len(self.cells):
             self.cells[frame_number].set_data(data)
+
+            # Handle duration - mark subsequent cells as continuation
+            if data is not None and data.get("duration", 1) > 1:
+                duration = int(data["duration"])
+                # Mark cells as continuation for the duration
+                for i in range(1, duration):
+                    continuation_idx = frame_number + i
+                    if continuation_idx < len(self.cells):
+                        self.cells[continuation_idx].set_continuation(True)
+            else:
+                # Clear continuation on this cell if duration is 1
+                self.cells[frame_number].set_continuation(False)
+
+    def clear_continuations_from(self, start_frame: int) -> None:
+        """Clear continuation markers from a frame onwards.
+
+        Args:
+            start_frame: Frame number to start clearing from
+        """
+        # Clear all continuations from this point (useful when editing)
+        for i in range(start_frame, len(self.cells)):
+            if self.cells[i].is_continuation:
+                self.cells[i].set_continuation(False)
+            else:
+                break  # Stop when we hit a non-continuation cell
 
 
 class FrameTimeline(QWidget):
@@ -596,6 +621,17 @@ class FrameEditor(QGroupBox):
         vol_row.addStretch()
         layout.addLayout(vol_row)
 
+        # Duration control (frames at 60 FPS)
+        dur_row = QHBoxLayout()
+        dur_row.addWidget(QLabel("Duration (frames):"))
+        self.dur_spin = QSpinBox()
+        self.dur_spin.setRange(1, 300)  # 1-300 frames (up to 5 seconds at 60 FPS)
+        self.dur_spin.setValue(1)
+        self.dur_spin.setEnabled(False)
+        dur_row.addWidget(self.dur_spin)
+        dur_row.addStretch()
+        layout.addLayout(dur_row)
+
         # Tone/Noise enables
         enables_row = QHBoxLayout()
         self.btn_tone_enable = QPushButton("Tone Enabled")
@@ -641,6 +677,7 @@ class FrameEditor(QGroupBox):
         data = {
             "frequency": self.freq_spin.value() if self.freq_spin.isEnabled() else None,
             "volume": self.vol_spin.value(),
+            "duration": self.dur_spin.value(),
             "tone_enabled": (
                 self.btn_tone_enable.isChecked() if self.btn_tone_enable.isEnabled() else None
             ),
@@ -669,6 +706,7 @@ class FrameEditor(QGroupBox):
         self.info_label.setText(f"Editing: {track_name} - Frame {frame_number}")
         self.freq_spin.setEnabled(track_index < 3)  # Only for tone channels
         self.vol_spin.setEnabled(True)
+        self.dur_spin.setEnabled(True)  # Duration available for all tracks
         self.btn_tone_enable.setEnabled(track_index < 3)
         self.btn_noise_enable.setEnabled(track_index < 3)
         self.btn_apply.setEnabled(True)
@@ -678,13 +716,14 @@ class FrameEditor(QGroupBox):
         """Load frame data into the editor controls.
 
         Args:
-            data: Frame data dict with frequency, volume, tone_enabled, noise_enabled
+            data: Frame data dict with frequency, volume, duration, tone_enabled, noise_enabled
                   or None for empty frame (resets to defaults)
         """
         if data is None:
             # Reset to defaults for empty frame
             self.freq_spin.setValue(440)
             self.vol_spin.setValue(10)
+            self.dur_spin.setValue(1)
             self.btn_tone_enable.setChecked(True)
             self.btn_noise_enable.setChecked(False)
         else:
@@ -693,6 +732,8 @@ class FrameEditor(QGroupBox):
                 self.freq_spin.setValue(int(data["frequency"]))
             if data.get("volume") is not None:
                 self.vol_spin.setValue(int(data["volume"]))
+            if data.get("duration") is not None:
+                self.dur_spin.setValue(int(data["duration"]))
             if data.get("tone_enabled") is not None:
                 self.btn_tone_enable.setChecked(bool(data["tone_enabled"]))
             if data.get("noise_enabled") is not None:
