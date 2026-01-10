@@ -2,7 +2,9 @@
 
 ## Project Overview
 
-**telliJASE** (Just A Sound Editor for Intellivision) is a PySide6 desktop application for composing music for the Intellivision's AY-3-8914 PSG chip. It features JAM mode (real-time sound design) with plans for FRAME mode (sequencer).
+**telliJASE** (Just A Sound Editor for Intellivision) is a PySide6 desktop application for composing music for the Intellivision's AY-3-8914 PSG chip. It features:
+- **JAM mode**: Real-time PSG playground for sound design
+- **FRAME mode**: Tracker-style sequencer for frame-by-frame composition (1800 frames = 30 seconds at 60 FPS)
 
 ## Architecture
 
@@ -36,6 +38,12 @@
   - Red toggle button (Mute)
   - Vertical volume sliders with tick marks
   - Frequency scale labels (100, 500, 1000, 1500 Hz)
+- `timeline.py` - FRAME mode timeline widgets
+  - FrameCell (70x55px) - Single frame visualization with text labels
+  - TrackTimeline - Row of cells for one channel/track
+  - FrameTimeline - Complete 5-track view (A, B, C, Noise, Envelope)
+  - FrameEditor - Panel for editing individual frame parameters
+  - Copy/paste with multi-select (Ctrl+C/V/A)
 
 **PSG Utils** (`tellijase/psg/`)
 - `utils.py` - CLOCK_HZ constant, frequency/period/amplitude conversions
@@ -67,11 +75,33 @@
 - **Volume**: 0-15 per channel, applied AFTER mixing
 
 ### UI/UX Design
+
+**JAM Mode:**
 - **Mixer-board aesthetic**: Vertical volume faders with tick marks
 - **Color coding**: Green=enabled, Red=muted, Gray=disabled
 - **Default power chord**: A2 (110 Hz), A3 (220 Hz), E4 (330 Hz)
 - **Precision controls**: Slider + text input, page step=1 for fine adjustments
 - **Mute behavior**: Stores volume, disables slider, restores on unmute
+
+**FRAME Mode:**
+- **Timeline**: 1800 frames (30 seconds at 60 FPS NTSC timing)
+- **Frame visualization**: Text-based display in each cell
+  - Line 1: Frequency (e.g., "440Hz")
+  - Line 2: Volume (e.g., "V:10")
+  - Line 3: Tone/Noise indicators ("T" green, "N" orange)
+- **Visual feedback**:
+  - Yellow border (3px): Current playback position
+  - Cyan border (2px): Selected for copy/paste
+  - Blue border (1px): Filled with data
+  - Gray border (1px): Empty frame
+- **Copy/paste workflow**:
+  - Ctrl+Click: Toggle frame selection
+  - Ctrl+C: Copy selected frames
+  - Ctrl+V: Paste frames
+  - Ctrl+A: Select all filled frames
+  - Status bar shows operation feedback
+- **Transport controls**: Play, Pause, Stop, Loop toggle
+- **Frame editor**: Side panel for editing individual frames
 
 ## Development Workflow
 
@@ -95,9 +125,11 @@ Three jobs run on Python 3.8-3.13:
 - Install package in editable mode (`pip install -e .`) before tests/lints
 
 ### Testing
-- All tests in `tests/` using pytest
+- All tests in `tests/` using pytest (16 tests currently)
 - Focus on domain models, audio engine, storage I/O
 - Mock Qt where needed (QT_QPA_PLATFORM=offscreen in CI)
+- **Storage tests**: JAM sessions, Songs with TrackEvents, multi-song projects
+- **Register validation**: Tests use PSGState.to_registers() to catch schema bugs
 
 ## Common Issues & Solutions
 
@@ -117,6 +149,12 @@ Three jobs run on Python 3.8-3.13:
 ### flake8 Complexity
 - **Problem**: PSGSynthesizer.render_buffer was too complex (C901)
 - **Solution**: Extracted `_process_channel` and `_update_phase` methods
+
+### Register Validation Bug (R14/R15)
+- **Problem**: "Unknown register key R14" when saving JAM sessions with envelope
+- **Root cause**: REGISTER_KEYS in project_model.py only had R0-R13, missing R14/R15 for envelope
+- **Solution**: Added R14 (envelope period high) and R15 (envelope shape) to REGISTER_KEYS
+- **Prevention**: Tests now use PSGState.to_registers() to simulate actual UI flow
 
 ## File Organization
 
@@ -143,7 +181,8 @@ tellijase/
 │   ├── io.py            # JSON persistence
 │   └── project_model.py # Data models for .tellijase files
 └── ui/
-    └── jam_controls.py  # ChannelControl widget
+    ├── jam_controls.py  # ChannelControl widget
+    └── timeline.py      # FrameCell, TrackTimeline, FrameTimeline, FrameEditor
 
 tests/
 ├── test_audio_engine.py
@@ -153,11 +192,13 @@ tests/
 └── test_shadow_state.py # (shadow_state only used here)
 ```
 
-## Future Features (Commented Out)
+## Future Features
 
 - **Envelope controls**: env_period, env_shape in main.py (lines commented, not deleted)
-- **FRAME mode**: Sequencer/tracker for frame-by-frame composition
+- **Track-level Mute/Solo**: Channel mute/solo buttons for FRAME mode (not per-frame)
 - **Export**: .BIN files for Intellivision, WAV export
+- **Inline frame editing**: Edit frames directly in timeline (currently via side panel)
+- **Frame duration**: Currently all frames are 1-frame duration, could add variable lengths
 
 ## Lessons Learned
 
@@ -181,14 +222,50 @@ tests/
 - Install package before running tests (`pip install -e .`)
 - Test across Python versions (3.8-3.13) to catch compatibility issues
 
+### FRAME Mode Implementation
+- **Timeline scale**: 1800 frames (30 sec) provides good balance for music composition
+- **Text visualization**: More informative than abstract bars for small cells
+- **Copy/paste architecture**: Store clipboard at widget level, emit signal for main window to apply
+- **Selection state**: Track at cell level, allows for flexible multi-select patterns
+- **Audio initialization**: FRAME mode should use identical backend logic to JAM mode (don't reinvent)
+
+### Storage Schema Validation
+- When adding new register fields (R14/R15), update REGISTER_KEYS in project_model.py
+- Write tests that use actual data flow (PSGState.to_registers()) not just schema checks
+- Register validation bugs manifest when saving, not loading - test both directions
+
+### Visual Feedback
+- Border hierarchy for cells: Playback (yellow, 3px) > Selection (cyan, 2px) > Filled (blue, 1px) > Empty (gray, 1px)
+- Status bar messages should confirm user actions (copy/paste counts)
+- Use QPainter custom rendering for frame cells instead of complex widget composition
+
 ## Quick Start for New Sessions
 
-1. **Understand the task**: JAM mode improvements, FRAME mode, export features, etc.
-2. **Check imports**: Main app uses PSGState, LivePSGStream/PygamePSGPlayer, ChannelControl
-3. **Run tests first**: `pytest --tb=short` to ensure nothing is broken
+1. **Understand the task**: JAM mode improvements, FRAME mode enhancements, export features, etc.
+2. **Check imports**:
+   - Main app uses PSGState, LivePSGStream/PygamePSGPlayer, ChannelControl
+   - FRAME mode uses FrameTimeline, FrameEditor from ui.timeline
+3. **Run tests first**: `pytest --tb=short` to ensure nothing is broken (16 tests)
 4. **Follow code quality**: Run `flake8` and `black` before committing
 5. **Update tests**: If changing defaults or behavior, update test expectations
 6. **Document in CLAUDE.md**: Add new architectural decisions or lessons learned
+
+## Current State (as of 2025-01)
+
+**Implemented:**
+- ✅ JAM mode with real-time PSG playground
+- ✅ FRAME mode with 1800-frame timeline (30 sec at 60 FPS)
+- ✅ Copy/paste with multi-select (Ctrl+C/V/A)
+- ✅ Text-based frame visualization
+- ✅ Frame playback with transport controls
+- ✅ Project save/load for both JAM sessions and FRAME sequences
+- ✅ Audio backend fallback (sounddevice → pygame)
+
+**Pending:**
+- ⏳ Track-level Mute/Solo for FRAME mode
+- ⏳ Inline frame editing (double-click)
+- ⏳ Envelope controls (UI commented out, ready to implement)
+- ⏳ Export to .BIN and WAV
 
 ## Contact & Resources
 
