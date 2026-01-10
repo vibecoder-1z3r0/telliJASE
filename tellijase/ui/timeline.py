@@ -151,6 +151,9 @@ class FrameTimeline(QWidget):
 class FrameEditor(QGroupBox):
     """Editor for a single frame's parameters."""
 
+    frame_applied = Signal(int, int, dict)  # (track_index, frame_number, data)
+    frame_cleared = Signal(int, int)  # (track_index, frame_number)
+
     def __init__(self, parent: QWidget | None = None) -> None:
         super().__init__("Frame Editor", parent)
         self.current_track = -1
@@ -216,6 +219,36 @@ class FrameEditor(QGroupBox):
 
         layout.addStretch()
 
+        # Connect button signals
+        self.btn_apply.clicked.connect(self._on_apply_clicked)
+        self.btn_clear.clicked.connect(self._on_clear_clicked)
+
+    def _on_apply_clicked(self) -> None:
+        """Apply button clicked - emit frame data."""
+        if self.current_track < 0 or self.current_frame < 0:
+            return
+
+        # Collect frame data from UI controls
+        data = {
+            "frequency": self.freq_spin.value() if self.freq_spin.isEnabled() else None,
+            "volume": self.vol_spin.value(),
+            "tone_enabled": self.btn_tone_enable.isChecked()
+            if self.btn_tone_enable.isEnabled()
+            else None,
+            "noise_enabled": self.btn_noise_enable.isChecked()
+            if self.btn_noise_enable.isEnabled()
+            else None,
+        }
+
+        self.frame_applied.emit(self.current_track, self.current_frame, data)
+
+    def _on_clear_clicked(self) -> None:
+        """Clear button clicked - clear the frame."""
+        if self.current_track < 0 or self.current_frame < 0:
+            return
+
+        self.frame_cleared.emit(self.current_track, self.current_frame)
+
     def set_frame(self, track_index: int, frame_number: int) -> None:
         """Set the currently edited frame."""
         self.current_track = track_index
@@ -231,6 +264,30 @@ class FrameEditor(QGroupBox):
         self.btn_noise_enable.setEnabled(track_index < 3)
         self.btn_apply.setEnabled(True)
         self.btn_clear.setEnabled(True)
+
+    def load_frame_data(self, data: dict | None) -> None:
+        """Load frame data into the editor controls.
+
+        Args:
+            data: Frame data dict with frequency, volume, tone_enabled, noise_enabled
+                  or None for empty frame (resets to defaults)
+        """
+        if data is None:
+            # Reset to defaults for empty frame
+            self.freq_spin.setValue(440)
+            self.vol_spin.setValue(10)
+            self.btn_tone_enable.setChecked(True)
+            self.btn_noise_enable.setChecked(False)
+        else:
+            # Load data from frame
+            if data.get("frequency") is not None:
+                self.freq_spin.setValue(int(data["frequency"]))
+            if data.get("volume") is not None:
+                self.vol_spin.setValue(int(data["volume"]))
+            if data.get("tone_enabled") is not None:
+                self.btn_tone_enable.setChecked(bool(data["tone_enabled"]))
+            if data.get("noise_enabled") is not None:
+                self.btn_noise_enable.setChecked(bool(data["noise_enabled"]))
 
 
 __all__ = ["FrameTimeline", "FrameEditor"]

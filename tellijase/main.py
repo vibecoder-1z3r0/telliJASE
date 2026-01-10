@@ -34,9 +34,18 @@ from tellijase import __version__
 from tellijase.audio.stream import LivePSGStream, SOUNDDEVICE_AVAILABLE
 from tellijase.audio.pygame_player import PygamePSGPlayer, PYGAME_AVAILABLE
 from tellijase.models import PSGState
-from tellijase.storage import JamSession, Project, Song, load_project, new_project, save_project
+from tellijase.storage import (
+    JamSession,
+    Project,
+    Song,
+    TrackEvent,
+    load_project,
+    new_project,
+    save_project,
+)
 from tellijase.ui.jam_controls import ChannelControl
 from tellijase.ui.timeline import FrameTimeline, FrameEditor
+from tellijase.psg.utils import frequency_to_period
 
 logger = logging.getLogger(__name__)
 
@@ -51,6 +60,17 @@ class MainWindow(QMainWindow):
         self.project: Project = new_project()
         self.current_state = PSGState()  # Live JAM state
         self.current_file: Optional[Path] = None
+
+        # FRAME mode state
+        self.current_song: Optional[Song] = None
+        # Timeline data: {"A": {frame: data}, "B": {frame: data}, ...}
+        self.timeline_data: dict[str, dict[int, dict]] = {
+            "A": {},
+            "B": {},
+            "C": {},
+            "N": {},
+            "E": {},  # Envelope
+        }
 
         # UI widgets
         self.channel_controls: list[ChannelControl] = []
@@ -343,6 +363,8 @@ class MainWindow(QMainWindow):
 
         # Frame editor panel
         self.frame_editor = FrameEditor()
+        self.frame_editor.frame_applied.connect(self._on_frame_applied)
+        self.frame_editor.frame_cleared.connect(self._on_frame_cleared)
         content_layout.addWidget(self.frame_editor, stretch=1)
 
         layout.addLayout(content_layout, stretch=1)
@@ -681,10 +703,53 @@ class MainWindow(QMainWindow):
         # TODO: Load song.tracks into timeline UI
         self.statusBar().showMessage(f"Loaded sequence: {song.name}", 3000)
 
+    def _track_index_to_channel_id(self, track_index: int) -> str:
+        """Convert track index to channel ID."""
+        mapping = {0: "A", 1: "B", 2: "C", 3: "N", 4: "E"}
+        return mapping.get(track_index, "A")
+
     def _on_frame_clicked(self, track_index: int, frame_number: int) -> None:
         """Frame cell clicked - open editor for that frame."""
         self.frame_editor.set_frame(track_index, frame_number)
+
+        # Load existing frame data if present
+        channel_id = self._track_index_to_channel_id(track_index)
+        frame_data = self.timeline_data[channel_id].get(frame_number)
+        self.frame_editor.load_frame_data(frame_data)
+
         self.statusBar().showMessage(f"Editing Track {track_index} Frame {frame_number}", 2000)
+
+    def _on_frame_applied(self, track_index: int, frame_number: int, data: dict) -> None:
+        """Frame data applied - store in timeline and update UI."""
+        channel_id = self._track_index_to_channel_id(track_index)
+
+        # Store frame data
+        self.timeline_data[channel_id][frame_number] = data
+
+        # Update timeline cell to show filled
+        self.timeline.set_frame_data(track_index, frame_number, True)
+
+        self.statusBar().showMessage(
+            f"Applied frame data to Track {track_index} Frame {frame_number}", 2000
+        )
+
+    def _on_frame_cleared(self, track_index: int, frame_number: int) -> None:
+        """Frame cleared - remove from timeline."""
+        channel_id = self._track_index_to_channel_id(track_index)
+
+        # Remove frame data if it exists
+        if frame_number in self.timeline_data[channel_id]:
+            del self.timeline_data[channel_id][frame_number]
+
+        # Update timeline cell to show empty
+        self.timeline.set_frame_data(track_index, frame_number, False)
+
+        # Reset editor to defaults
+        self.frame_editor.load_frame_data(None)
+
+        self.statusBar().showMessage(
+            f"Cleared Track {track_index} Frame {frame_number}", 2000
+        )
 
     def _on_noise_slider_changed(self, value: int) -> None:
         """Noise period slider changed - update text input and PSG state."""
