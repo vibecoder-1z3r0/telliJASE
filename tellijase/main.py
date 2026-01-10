@@ -369,6 +369,8 @@ class MainWindow(QMainWindow):
 
         self.timeline = FrameTimeline()
         self.timeline.frame_clicked.connect(self._on_frame_clicked)
+        self.timeline.frames_copied.connect(self._on_frames_copied)
+        self.timeline.frames_pasted.connect(self._on_frames_pasted)
         scroll.setWidget(self.timeline)
         content_layout.addWidget(scroll, stretch=3)
 
@@ -829,6 +831,31 @@ class MainWindow(QMainWindow):
         self.frame_editor.load_frame_data(None)
 
         self.statusBar().showMessage(f"Cleared Track {track_index} Frame {frame_number}", 2000)
+
+    def _on_frames_copied(self, count: int) -> None:
+        """Handle frames copied to clipboard.
+
+        Args:
+            count: Number of frames copied
+        """
+        self.statusBar().showMessage(f"Copied {count} frame(s)", 2000)
+
+    def _on_frames_pasted(self, clipboard_data: list) -> None:
+        """Handle pasted frames from clipboard.
+
+        Args:
+            clipboard_data: List of (track_idx, frame_num, data) tuples
+        """
+        for track_idx, original_frame, data in clipboard_data:
+            channel_id = self._track_index_to_channel_id(track_idx)
+
+            # Store frame data copy
+            self.timeline_data[channel_id][original_frame] = data.copy()
+
+            # Update timeline cell with visualization
+            self.timeline.set_frame_data(track_idx, original_frame, data)
+
+        self.statusBar().showMessage(f"Pasted {len(clipboard_data)} frame(s)", 2000)
 
     # Frame Playback Engine -------------------------------------------
     def _on_frame_play(self) -> None:
