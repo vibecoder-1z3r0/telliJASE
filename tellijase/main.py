@@ -174,6 +174,7 @@ class MainWindow(QMainWindow):
         self.tabs = QTabWidget()
         self.tabs.addTab(self._build_jam_tab(), "JAM")
         self.tabs.addTab(self._build_frame_tab(), "FRAME")
+        self.tabs.currentChanged.connect(self._on_tab_changed)
         layout.addWidget(self.tabs)
 
         self.setCentralWidget(container)
@@ -983,6 +984,12 @@ class MainWindow(QMainWindow):
     def _on_frame_loop_toggled(self, checked: bool) -> None:
         """Toggle loop mode."""
         self.playback_loop = checked
+
+    def _on_tab_changed(self, index: int) -> None:
+        """Handle tab change - stop FRAME playback if switching away from FRAME tab."""
+        # Stop FRAME playback if it's active
+        if self.is_playing:
+            self._on_frame_stop()
 
     def _load_next_channel_event(self, channel_id: str) -> None:
         """Load the next event for a channel if needed.
