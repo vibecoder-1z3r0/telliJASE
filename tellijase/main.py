@@ -365,7 +365,7 @@ class MainWindow(QMainWindow):
         transport.addStretch()
         layout.addLayout(transport)
 
-        # Main timeline and editor layout
+        # Main timeline and right panel layout
         content_layout = QHBoxLayout()
 
         # Timeline (scrollable)
@@ -376,22 +376,73 @@ class MainWindow(QMainWindow):
         scroll.setHorizontalScrollBarPolicy(Qt.ScrollBarAlwaysOn)
         scroll.setVerticalScrollBarPolicy(Qt.ScrollBarAsNeeded)
 
-        self.timeline = FrameTimeline()
+        self.timeline = FrameTimeline(max_frames=1800)
         self.timeline.frame_clicked.connect(self._on_frame_clicked)
         self.timeline.data_changed.connect(self._on_frame_applied)  # Inline editing
-        self.timeline.frames_copied.connect(self._on_frames_copied)
-        self.timeline.frames_pasted.connect(self._on_frames_pasted)
         scroll.setWidget(self.timeline)
         content_layout.addWidget(scroll, stretch=3)
 
-        # Initialize timeline_data from the default frames in the timeline widget
+        # Initialize timeline_data from the default keyframes at frame 0
         self._initialize_timeline_data_from_ui()
 
-        # Frame editor panel
+        # Right panel - tabbed (Frame Editor | PSG I/O)
+        right_panel = QTabWidget()
+
+        # Tab 1: Frame Editor
         self.frame_editor = FrameEditor()
         self.frame_editor.frame_applied.connect(self._on_frame_applied)
         self.frame_editor.frame_cleared.connect(self._on_frame_cleared)
-        content_layout.addWidget(self.frame_editor, stretch=1)
+        right_panel.addTab(self.frame_editor, "Frame Editor")
+
+        # Tab 2: PSG I/O Display
+        io_panel = QWidget()
+        io_layout = QVBoxLayout(io_panel)
+        io_layout.setContentsMargins(5, 5, 5, 5)
+
+        io_layout.addWidget(QLabel("<b>PSG Chip I/O (Live during playback):</b>"))
+
+        # Horizontal split for input/output
+        io_row = QHBoxLayout()
+
+        # LEFT: Input (raw register values)
+        input_group = QWidget()
+        input_layout = QVBoxLayout(input_group)
+        input_layout.setContentsMargins(0, 0, 5, 0)
+        input_layout.addWidget(QLabel("<i>Input (Register Values):</i>"))
+
+        self.frame_register_input_display = QLabel()
+        self.frame_register_input_display.setFont(QApplication.font("Monospace"))
+        self.frame_register_input_display.setStyleSheet(
+            "background-color: #1e1e1e; color: #00ff00; padding: 10px; "
+            "font-family: monospace; font-size: 9pt;"
+        )
+        self.frame_register_input_display.setWordWrap(False)
+        self.frame_register_input_display.setAlignment(Qt.AlignTop | Qt.AlignLeft)
+        input_layout.addWidget(self.frame_register_input_display)
+
+        # RIGHT: Output (decoded values)
+        output_group = QWidget()
+        output_layout = QVBoxLayout(output_group)
+        output_layout.setContentsMargins(5, 0, 0, 0)
+        output_layout.addWidget(QLabel("<i>Output (Actual Sound):</i>"))
+
+        self.frame_register_output_display = QLabel()
+        self.frame_register_output_display.setFont(QApplication.font("Monospace"))
+        self.frame_register_output_display.setStyleSheet(
+            "background-color: #1e1e1e; color: #00aaff; padding: 10px; "
+            "font-family: monospace; font-size: 9pt;"
+        )
+        self.frame_register_output_display.setWordWrap(False)
+        self.frame_register_output_display.setAlignment(Qt.AlignTop | Qt.AlignLeft)
+        output_layout.addWidget(self.frame_register_output_display)
+
+        io_row.addWidget(input_group)
+        io_row.addWidget(output_group)
+        io_layout.addLayout(io_row)
+
+        right_panel.addTab(io_panel, "PSG I/O")
+
+        content_layout.addWidget(right_panel, stretch=1)
 
         layout.addLayout(content_layout, stretch=1)
         return widget
@@ -762,10 +813,12 @@ class MainWindow(QMainWindow):
         for channel_id in self.timeline_data:
             self.timeline_data[channel_id] = {}
 
-        # Clear timeline UI
-        for track_idx in range(5):
-            for frame_num in range(128):
-                self.timeline.set_frame_data(track_idx, frame_num, None)
+        # Clear timeline UI (remove all keyframes)
+        for track in self.timeline.tracks:
+            # Get list of frame numbers to avoid modifying dict during iteration
+            frame_numbers = list(track.keyframes.keys())
+            for frame_num in frame_numbers:
+                track.remove_keyframe(frame_num)
 
         # Load TrackEvents into timeline_data
         event_count = 0
@@ -805,12 +858,13 @@ class MainWindow(QMainWindow):
         return mapping.get(track_index, "A")
 
     def _initialize_timeline_data_from_ui(self) -> None:
-        """Pull initial frame data from timeline widget into timeline_data."""
+        """Pull initial keyframe data from timeline widget into timeline_data."""
         for track_index, track in enumerate(self.timeline.tracks):
             channel_id = self._track_index_to_channel_id(track_index)
-            # Copy data from the track's frame_data_store
-            for frame_num, frame_data in track.frame_data_store.items():
-                self.timeline_data[channel_id][frame_num] = frame_data.copy()
+            # Copy data from the track's keyframes
+            for frame_num, cell in track.keyframes.items():
+                if cell.frame_data:
+                    self.timeline_data[channel_id][frame_num] = cell.frame_data.copy()
 
     def _on_frame_clicked(self, track_index: int, frame_number: int) -> None:
         """Frame cell clicked - open editor for that frame."""
@@ -852,31 +906,6 @@ class MainWindow(QMainWindow):
         self.frame_editor.load_frame_data(None)
 
         self.statusBar().showMessage(f"Cleared Track {track_index} Frame {frame_number}", 2000)
-
-    def _on_frames_copied(self, count: int) -> None:
-        """Handle frames copied to clipboard.
-
-        Args:
-            count: Number of frames copied
-        """
-        self.statusBar().showMessage(f"Copied {count} frame(s)", 2000)
-
-    def _on_frames_pasted(self, clipboard_data: list) -> None:
-        """Handle pasted frames from clipboard.
-
-        Args:
-            clipboard_data: List of (track_idx, frame_num, data) tuples
-        """
-        for track_idx, original_frame, data in clipboard_data:
-            channel_id = self._track_index_to_channel_id(track_idx)
-
-            # Store frame data copy
-            self.timeline_data[channel_id][original_frame] = data.copy()
-
-            # Update timeline cell with visualization
-            self.timeline.set_frame_data(track_idx, original_frame, data)
-
-        self.statusBar().showMessage(f"Pasted {len(clipboard_data)} frame(s)", 2000)
 
     # Frame Playback Engine -------------------------------------------
     def _on_frame_play(self) -> None:
@@ -961,8 +990,9 @@ class MainWindow(QMainWindow):
             state["active_frame"] = None
             state["frames_remaining"] = 0
 
-        # Clear playback position highlight
-        self.timeline.set_playback_position(-1)
+        # Clear playback position highlights
+        for track in self.timeline.tracks:
+            track.clear_all_highlights()
 
         # Reset PSG state channels to defaults (keep same object reference for audio stream)
         self.current_state.channel_a.frequency = 440
@@ -1047,16 +1077,15 @@ class MainWindow(QMainWindow):
         # Update register display
         self._update_register_display()
 
-        # Highlight current playback position (show the earliest active frame)
-        earliest_frame = min(
-            (
-                s["active_frame"]
-                for s in self.channel_playback_state.values()
-                if s["active_frame"] is not None
-            ),
-            default=self.current_frame,
-        )
-        self.timeline.set_playback_position(earliest_frame)
+        # Highlight active keyframes for each channel during playback
+        for track_index, (channel_id, state) in enumerate(self.channel_playback_state.items()):
+            active_frame = state["active_frame"]
+            if active_frame is not None:
+                # Highlight this keyframe as currently playing
+                self.timeline.tracks[track_index].set_keyframe_highlighted(active_frame, True)
+            else:
+                # Clear highlights for this track
+                self.timeline.tracks[track_index].clear_all_highlights()
 
         # Advance global frame counter
         self.current_frame += 1
@@ -1176,6 +1205,10 @@ class MainWindow(QMainWindow):
 
         self.register_input_display.setText("\n".join(input_lines))
 
+        # Update FRAME tab register display (if it exists)
+        if hasattr(self, 'frame_register_input_display'):
+            self.frame_register_input_display.setText("\n".join(input_lines))
+
         # RIGHT: Output (decoded values)
         output_lines = []
 
@@ -1240,6 +1273,10 @@ class MainWindow(QMainWindow):
         output_lines.append("Envelope: Not implemented")
 
         self.register_output_display.setText("\n".join(output_lines))
+
+        # Update FRAME tab register display (if it exists)
+        if hasattr(self, 'frame_register_output_display'):
+            self.frame_register_output_display.setText("\n".join(output_lines))
 
     def _on_play_audio(self) -> None:
         """Start real-time audio playback with automatic backend fallback."""
