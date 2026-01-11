@@ -963,8 +963,16 @@ class MainWindow(QMainWindow):
         # Clear playback position highlight
         self.timeline.set_playback_position(-1)
 
-        # Reset PSG state
-        self.current_state = PSGState()
+        # Reset PSG state channels to defaults (keep same object reference for audio stream)
+        self.current_state.channel_a.frequency = 440
+        self.current_state.channel_a.volume = 0
+        self.current_state.channel_b.frequency = 440
+        self.current_state.channel_b.volume = 0
+        self.current_state.channel_c.frequency = 440
+        self.current_state.channel_c.volume = 0
+        self.current_state.noise_period = 1
+        self.current_state.envelope_period = 0
+        self.current_state.envelope_shape = 0
         self._update_register_display()
 
         self.btn_frame_play.setEnabled(True)
@@ -1010,9 +1018,9 @@ class MainWindow(QMainWindow):
         elif channel_id == "C":
             self._apply_frame_to_channel(self.current_state.channel_c, data)
         elif channel_id == "N":
-            # Apply noise period
-            if data.get("volume") is not None:
-                self.current_state.noise_period = data.get("volume", 1)
+            # Apply noise period from frame data
+            if data.get("period") is not None:
+                self.current_state.noise_period = data.get("period", 1)
 
         # Set active frame and remaining duration
         state["active_frame"] = next_frame
