@@ -331,12 +331,14 @@ class TrackTimeline(QGroupBox):
         self.is_condensed = False  # False = expanded (full grid), True = condensed (cards only)
         self.frame_data_store: dict[int, dict] = {}  # Store data for condensed mode
 
-        # Gray panel styling with increased padding
+        # Gray panel styling with increased padding and title spacing
         self.setStyleSheet(
             "QGroupBox { background-color: #3c3c3c; border: 2px solid #555; "
-            "border-radius: 5px; margin-top: 15px; margin-bottom: 15px; padding: 25px; font-weight: bold; }"
+            "border-radius: 5px; margin-top: 20px; margin-bottom: 20px; "
+            "padding-top: 35px; padding-left: 25px; padding-right: 25px; padding-bottom: 25px; "
+            "font-weight: bold; }"
             "QGroupBox::title { subcontrol-origin: margin; subcontrol-position: top left; "
-            "padding: 5px 8px; }"
+            "padding: 8px 10px; margin-top: 5px; }"
         )
 
         main_layout = QVBoxLayout(self)
