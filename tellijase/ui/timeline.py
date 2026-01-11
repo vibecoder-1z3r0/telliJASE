@@ -338,7 +338,7 @@ class TrackTimeline(QGroupBox):
             "padding-top: 30px; padding-left: 10px; padding-right: 10px; padding-bottom: 10px; "
             "font-weight: bold; }"
             "QGroupBox::title { subcontrol-origin: margin; subcontrol-position: top left; "
-            "padding: 8px 10px; margin-top: 5px; }"
+            "padding: 4px 0px; margin-top: -5px; }"
         )
 
         main_layout = QVBoxLayout(self)
