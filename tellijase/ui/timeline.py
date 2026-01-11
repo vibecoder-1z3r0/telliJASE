@@ -17,7 +17,7 @@ from PySide6.QtWidgets import (
 
 
 # Constants for layout
-PIXELS_PER_FRAME = 100  # Each frame is 100 pixels wide on the timeline (sparse keyframe view)
+PIXELS_PER_FRAME = 2  # Each frame is 2 pixels wide on the timeline (time-accurate positioning)
 CELL_WIDTH = 100
 CELL_HEIGHT = 95
 TRACK_HEIGHT = 120  # Height of each track row (includes cell + padding)
