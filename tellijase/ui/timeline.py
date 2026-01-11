@@ -331,16 +331,16 @@ class TrackTimeline(QGroupBox):
         self.is_condensed = False  # False = expanded (full grid), True = condensed (cards only)
         self.frame_data_store: dict[int, dict] = {}  # Store data for condensed mode
 
-        # Gray panel styling
+        # Gray panel styling with increased padding
         self.setStyleSheet(
             "QGroupBox { background-color: #3c3c3c; border: 2px solid #555; "
-            "border-radius: 5px; margin-top: 10px; padding: 10px; font-weight: bold; }"
+            "border-radius: 5px; margin-top: 10px; padding: 15px; font-weight: bold; }"
             "QGroupBox::title { subcontrol-origin: margin; subcontrol-position: top left; "
             "padding: 2px 5px; }"
         )
 
         main_layout = QVBoxLayout(self)
-        main_layout.setSpacing(4)
+        main_layout.setSpacing(8)  # Increased from 4 to 8 for more vertical space
 
         # Timeline row (label + cells)
         timeline_row = QHBoxLayout()
@@ -541,18 +541,19 @@ class FrameTimeline(QWidget):
         self.tracks: list[TrackTimeline] = []
         self.clipboard = []  # Store copied frame data: [(track_idx, frame_num, data), ...]
         self.setFocusPolicy(Qt.StrongFocus)  # Allow keyboard events
-        self.is_condensed = False  # Track current mode
+        self.is_condensed = True  # Start in condensed mode by default
 
         layout = QVBoxLayout(self)
-        layout.setSpacing(2)
+        layout.setSpacing(8)  # Increased from 2 to 8 for more vertical space between tracks
         layout.setContentsMargins(0, 0, 0, 0)
 
         # Controls row with mode toggle
         controls_row = QHBoxLayout()
         controls_row.setSpacing(8)
 
-        self.btn_toggle_mode = QPushButton("Expanded")
+        self.btn_toggle_mode = QPushButton("Condensed")  # Start in condensed mode
         self.btn_toggle_mode.setCheckable(True)
+        self.btn_toggle_mode.setChecked(True)  # Start checked (condensed mode)
         self.btn_toggle_mode.setFixedSize(100, 30)
         self.btn_toggle_mode.toggled.connect(self._on_mode_toggled)
         self.btn_toggle_mode.setStyleSheet(
@@ -603,6 +604,8 @@ class FrameTimeline(QWidget):
             track.solo_changed.connect(self._on_track_solo_changed)
             layout.addWidget(track)
             self.tracks.append(track)
+            # Start in condensed mode
+            track.rebuild_cells(True)
 
     def _on_mode_toggled(self, checked: bool) -> None:
         """Handle mode toggle button - switch between condensed and expanded."""
