@@ -1205,8 +1205,8 @@ class MainWindow(QMainWindow):
 
         self.register_input_display.setText("\n".join(input_lines))
 
-        # Update FRAME tab register display (if it exists)
-        if hasattr(self, 'frame_register_input_display'):
+        # Update FRAME tab register display only if FRAME tab is active
+        if hasattr(self, 'frame_register_input_display') and self.tabs.currentIndex() == 1:
             self.frame_register_input_display.setText("\n".join(input_lines))
 
         # RIGHT: Output (decoded values)
@@ -1274,8 +1274,8 @@ class MainWindow(QMainWindow):
 
         self.register_output_display.setText("\n".join(output_lines))
 
-        # Update FRAME tab register display (if it exists)
-        if hasattr(self, 'frame_register_output_display'):
+        # Update FRAME tab register display only if FRAME tab is active
+        if hasattr(self, 'frame_register_output_display') and self.tabs.currentIndex() == 1:
             self.frame_register_output_display.setText("\n".join(output_lines))
 
     def _on_play_audio(self) -> None:
