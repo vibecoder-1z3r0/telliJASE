@@ -59,6 +59,7 @@ class MainWindow(QMainWindow):
         # Models (domain layer - pure data)
         self.project: Project = new_project()
         self.current_state = PSGState()  # Live JAM state
+        self.saved_jam_state: Optional[PSGState] = None  # Saved JAM state when switching to FRAME
         self.current_file: Optional[Path] = None
 
         # FRAME mode state
@@ -1016,10 +1017,62 @@ class MainWindow(QMainWindow):
         self.playback_loop = checked
 
     def _on_tab_changed(self, index: int) -> None:
-        """Handle tab change - stop FRAME playback if switching away from FRAME tab."""
+        """Handle tab change - save/restore state between JAM and FRAME modes."""
         # Stop FRAME playback if it's active
         if self.is_playing:
             self._on_frame_stop()
+
+        if index == 0:  # Switching TO JAM tab
+            # Restore saved JAM state if it exists
+            if self.saved_jam_state is not None:
+                # Copy values INTO existing current_state (preserve audio stream reference)
+                self.current_state.channel_a.frequency = self.saved_jam_state.channel_a.frequency
+                self.current_state.channel_a.volume = self.saved_jam_state.channel_a.volume
+                self.current_state.channel_a.tone_enabled = self.saved_jam_state.channel_a.tone_enabled
+                self.current_state.channel_a.noise_enabled = self.saved_jam_state.channel_a.noise_enabled
+
+                self.current_state.channel_b.frequency = self.saved_jam_state.channel_b.frequency
+                self.current_state.channel_b.volume = self.saved_jam_state.channel_b.volume
+                self.current_state.channel_b.tone_enabled = self.saved_jam_state.channel_b.tone_enabled
+                self.current_state.channel_b.noise_enabled = self.saved_jam_state.channel_b.noise_enabled
+
+                self.current_state.channel_c.frequency = self.saved_jam_state.channel_c.frequency
+                self.current_state.channel_c.volume = self.saved_jam_state.channel_c.volume
+                self.current_state.channel_c.tone_enabled = self.saved_jam_state.channel_c.tone_enabled
+                self.current_state.channel_c.noise_enabled = self.saved_jam_state.channel_c.noise_enabled
+
+                self.current_state.noise_period = self.saved_jam_state.noise_period
+                self.current_state.envelope_period = self.saved_jam_state.envelope_period
+                self.current_state.envelope_shape = self.saved_jam_state.envelope_shape
+
+                self.saved_jam_state = None
+
+                # Update all JAM UI controls from restored state
+                for idx, control in enumerate(self.channel_controls):
+                    if idx == 0:
+                        channel = self.current_state.channel_a
+                    elif idx == 1:
+                        channel = self.current_state.channel_b
+                    else:
+                        channel = self.current_state.channel_c
+
+                    control.set_state(
+                        frequency=channel.frequency,
+                        volume=channel.volume,
+                        tone_enabled=channel.tone_enabled,
+                        noise_enabled=channel.noise_enabled,
+                    )
+
+                # Update noise control
+                self.noise_slider.setValue(self.current_state.noise_period)
+
+                # Update register display
+                self._update_register_display()
+
+        elif index == 1:  # Switching TO FRAME tab
+            # Save current JAM state
+            from copy import deepcopy
+            self.saved_jam_state = deepcopy(self.current_state)
 
     def _load_next_channel_event(self, channel_id: str) -> None:
         """Load the next event for a channel if needed.
