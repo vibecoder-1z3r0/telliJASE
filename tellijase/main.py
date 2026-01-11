@@ -383,6 +383,9 @@ class MainWindow(QMainWindow):
         scroll.setWidget(self.timeline)
         content_layout.addWidget(scroll, stretch=3)
 
+        # Initialize timeline_data from the default frames in the timeline widget
+        self._initialize_timeline_data_from_ui()
+
         # Frame editor panel
         self.frame_editor = FrameEditor()
         self.frame_editor.frame_applied.connect(self._on_frame_applied)
@@ -799,6 +802,14 @@ class MainWindow(QMainWindow):
         """Convert track index to channel ID."""
         mapping = {0: "A", 1: "B", 2: "C", 3: "N", 4: "E"}
         return mapping.get(track_index, "A")
+
+    def _initialize_timeline_data_from_ui(self) -> None:
+        """Pull initial frame data from timeline widget into timeline_data."""
+        for track_index, track in enumerate(self.timeline.tracks):
+            channel_id = self._track_index_to_channel_id(track_index)
+            # Copy data from the track's frame_data_store
+            for frame_num, frame_data in track.frame_data_store.items():
+                self.timeline_data[channel_id][frame_num] = frame_data.copy()
 
     def _on_frame_clicked(self, track_index: int, frame_number: int) -> None:
         """Frame cell clicked - open editor for that frame."""

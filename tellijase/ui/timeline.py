@@ -616,25 +616,6 @@ class FrameTimeline(QWidget):
         layout.setSpacing(15)  # Moderate vertical space between tracks
         layout.setContentsMargins(10, 10, 10, 10)  # Add margins around entire timeline
 
-        # Controls row with mode toggle
-        controls_row = QHBoxLayout()
-        controls_row.setSpacing(8)
-
-        self.btn_toggle_mode = QPushButton("Expanded")  # Start in expanded mode
-        self.btn_toggle_mode.setCheckable(True)
-        self.btn_toggle_mode.setChecked(False)  # Start unchecked (expanded mode)
-        self.btn_toggle_mode.setFixedSize(100, 30)
-        self.btn_toggle_mode.toggled.connect(self._on_mode_toggled)
-        self.btn_toggle_mode.setStyleSheet(
-            "QPushButton { background-color: #555; color: #ccc; font-weight: bold; }"
-            "QPushButton:checked { background-color: #0a7; color: white; }"
-        )
-        controls_row.addWidget(QLabel("View Mode:"))
-        controls_row.addWidget(self.btn_toggle_mode)
-        controls_row.addStretch()
-
-        layout.addLayout(controls_row)
-
         # Header with frame numbers
         header_row = QHBoxLayout()
         header_label = QLabel("")
