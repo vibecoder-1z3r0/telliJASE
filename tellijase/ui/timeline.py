@@ -17,9 +17,8 @@ from PySide6.QtWidgets import (
 
 
 # Constants for layout
-PIXELS_PER_FRAME = 2  # Each frame is 2 pixels wide on the timeline (time-accurate positioning)
-CELL_WIDTH = 100
-CELL_HEIGHT = 95
+CELL_WIDTH = 100  # Width of each keyframe cell
+CELL_HEIGHT = 95  # Height of each keyframe cell
 TRACK_HEIGHT = 120  # Height of each track row (includes cell + padding)
 
 
@@ -251,32 +250,22 @@ class FrameCell(QWidget):
 
 
 class TimelineRuler(QWidget):
-    """Ruler showing frame numbers and tick marks."""
+    """Ruler header for the timeline."""
 
     def __init__(self, max_frames: int = 1800, parent: QWidget | None = None) -> None:
         super().__init__(parent)
         self.max_frames = max_frames
         self.setMinimumHeight(30)
-        self.setMinimumWidth(max_frames * PIXELS_PER_FRAME)
+        self.setMinimumWidth(500)
 
     def paintEvent(self, event) -> None:
-        """Draw ruler with frame numbers and tick marks."""
+        """Draw ruler background."""
         painter = QPainter(self)
         painter.fillRect(self.rect(), QColor(50, 50, 50))
 
-        # Draw tick marks and labels every 60 frames (1 second at 60 FPS)
-        tick_interval = 60
-        for frame in range(0, self.max_frames + 1, tick_interval):
-            x = frame * PIXELS_PER_FRAME
-
-            # Draw tick mark
-            painter.setPen(QColor(150, 150, 150))
-            painter.drawLine(x, self.height() - 10, x, self.height())
-
-            # Draw label (seconds)
-            seconds = frame // 60
-            painter.setPen(QColor(200, 200, 200))
-            painter.drawText(x + 2, 15, f"{seconds}s")
+        # Draw label
+        painter.setPen(QColor(200, 200, 200))
+        painter.drawText(10, 20, "Keyframes (sequential view)")
 
 
 class TrackTimeline(QWidget):
@@ -301,7 +290,8 @@ class TrackTimeline(QWidget):
         self.keyframes: dict[int, FrameCell] = {}  # frame_number -> FrameCell
 
         self.setMinimumHeight(TRACK_HEIGHT)
-        self.setMinimumWidth(max_frames * PIXELS_PER_FRAME)
+        # Width will be determined by number of keyframes, not max frames
+        self.setMinimumWidth(500)  # Minimum reasonable width
 
         # Track label overlay
         self.label = QLabel(track_name, self)
@@ -325,14 +315,11 @@ class TrackTimeline(QWidget):
             cell.clicked.connect(self.keyframe_clicked)
             cell.delete_requested.connect(self._on_delete_requested)
 
-            # Position the cell using absolute positioning
-            x = frame_number * PIXELS_PER_FRAME
-            y = (TRACK_HEIGHT - CELL_HEIGHT) // 2  # Center vertically
-            cell.move(x, y)
-            cell.show()
-
             self.keyframes[frame_number] = cell
             self.keyframe_added.emit(self.track_index, frame_number)
+
+            # Reposition all keyframes sequentially
+            self._reposition_keyframes()
 
     def remove_keyframe(self, frame_number: int) -> None:
         """Remove a keyframe at the specified frame position."""
@@ -341,6 +328,21 @@ class TrackTimeline(QWidget):
             cell.deleteLater()
             del self.keyframes[frame_number]
             self.keyframe_deleted.emit(self.track_index, frame_number)
+
+            # Reposition remaining keyframes
+            self._reposition_keyframes()
+
+    def _reposition_keyframes(self) -> None:
+        """Reposition all keyframes sequentially based on sorted frame numbers."""
+        spacing = 4  # Pixels between keyframes
+        sorted_frames = sorted(self.keyframes.keys())
+
+        for index, frame_num in enumerate(sorted_frames):
+            cell = self.keyframes[frame_num]
+            x = index * (CELL_WIDTH + spacing)
+            y = (TRACK_HEIGHT - CELL_HEIGHT) // 2  # Center vertically
+            cell.move(x, y)
+            cell.show()
 
     def set_keyframe_highlighted(self, frame_number: int, highlighted: bool) -> None:
         """Set highlight state for a keyframe."""
@@ -357,7 +359,7 @@ class TrackTimeline(QWidget):
         self.remove_keyframe(frame_number)
 
     def mousePressEvent(self, event: QMouseEvent) -> None:
-        """Handle click on empty timeline - add new keyframe."""
+        """Handle click on empty timeline - TODO: implement add keyframe dialog."""
         # Check if click is on empty space (not on a keyframe cell)
         for cell in self.keyframes.values():
             if cell.geometry().contains(event.pos()):
@@ -365,35 +367,8 @@ class TrackTimeline(QWidget):
                 super().mousePressEvent(event)
                 return
 
-        # Click on empty space - add new keyframe
-        frame_number = event.pos().x() // PIXELS_PER_FRAME
-        if 0 <= frame_number < self.max_frames:
-            # Create default data based on track type
-            if self.track_index < 3:  # Tone channels
-                default_data = {
-                    "frequency": 440,
-                    "volume": 0,
-                    "tone_enabled": True,
-                    "noise_enabled": False,
-                    "deactivated": False,
-                    "duration": 1,
-                }
-            elif self.track_index == 3:  # Noise channel
-                default_data = {
-                    "period": 1,
-                    "volume": 0,
-                    "deactivated": False,
-                    "duration": 1,
-                }
-            else:  # Envelope channel
-                default_data = {
-                    "frequency": 440,
-                    "volume": 0,
-                    "deactivated": False,
-                    "duration": 1,
-                }
-
-            self.add_keyframe(frame_number, default_data)
+        # TODO: Click on empty space - could prompt for frame number
+        # For now, do nothing - user can add via editor panel
 
         super().mousePressEvent(event)
 
@@ -403,12 +378,6 @@ class TrackTimeline(QWidget):
 
         # Draw track background
         painter.fillRect(self.rect(), QColor(60, 60, 60))
-
-        # Draw grid lines every 60 frames (1 second)
-        painter.setPen(QPen(QColor(80, 80, 80), 1))
-        for frame in range(0, self.max_frames + 1, 60):
-            x = frame * PIXELS_PER_FRAME
-            painter.drawLine(x, 0, x, self.height())
 
 
 class FrameTimeline(QWidget):
