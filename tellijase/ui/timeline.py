@@ -318,7 +318,7 @@ class TrackTimeline(QGroupBox):
         self,
         track_index: int,
         track_name: str,
-        num_frames: int = 120,  # Reduced from 1800 for better performance (2 sec at 60 FPS)
+        num_frames: int = 5,  # Small number for initial implementation
         parent: QWidget | None = None,
     ) -> None:
         super().__init__(track_name, parent)
@@ -331,18 +331,18 @@ class TrackTimeline(QGroupBox):
         self.is_condensed = False  # False = expanded (full grid), True = condensed (cards only)
         self.frame_data_store: dict[int, dict] = {}  # Store data for condensed mode
 
-        # Gray panel styling with increased padding and title spacing
+        # Gray panel styling with title spacing
         self.setStyleSheet(
             "QGroupBox { background-color: #3c3c3c; border: 2px solid #555; "
             "border-radius: 5px; margin-top: 20px; margin-bottom: 20px; "
-            "padding-top: 35px; padding-left: 25px; padding-right: 25px; padding-bottom: 25px; "
+            "padding-top: 30px; padding-left: 10px; padding-right: 10px; padding-bottom: 10px; "
             "font-weight: bold; }"
             "QGroupBox::title { subcontrol-origin: margin; subcontrol-position: top left; "
             "padding: 8px 10px; margin-top: 5px; }"
         )
 
         main_layout = QVBoxLayout(self)
-        main_layout.setSpacing(20)  # Much more vertical space within track
+        main_layout.setSpacing(10)  # Moderate vertical space within track
 
         # Timeline row (label + cells)
         timeline_row = QHBoxLayout()
@@ -539,23 +539,23 @@ class FrameTimeline(QWidget):
 
     def __init__(self, parent: QWidget | None = None) -> None:
         super().__init__(parent)
-        self.num_frames = 120  # Reduced from 1800 for performance (2 sec at 60 FPS)
+        self.num_frames = 5  # Small number for initial implementation
         self.tracks: list[TrackTimeline] = []
         self.clipboard = []  # Store copied frame data: [(track_idx, frame_num, data), ...]
         self.setFocusPolicy(Qt.StrongFocus)  # Allow keyboard events
-        self.is_condensed = True  # Start in condensed mode by default
+        self.is_condensed = False  # Start in expanded mode by default
 
         layout = QVBoxLayout(self)
-        layout.setSpacing(20)  # Much more vertical space between tracks
+        layout.setSpacing(15)  # Moderate vertical space between tracks
         layout.setContentsMargins(10, 10, 10, 10)  # Add margins around entire timeline
 
         # Controls row with mode toggle
         controls_row = QHBoxLayout()
         controls_row.setSpacing(8)
 
-        self.btn_toggle_mode = QPushButton("Condensed")  # Start in condensed mode
+        self.btn_toggle_mode = QPushButton("Expanded")  # Start in expanded mode
         self.btn_toggle_mode.setCheckable(True)
-        self.btn_toggle_mode.setChecked(True)  # Start checked (condensed mode)
+        self.btn_toggle_mode.setChecked(False)  # Start unchecked (expanded mode)
         self.btn_toggle_mode.setFixedSize(100, 30)
         self.btn_toggle_mode.toggled.connect(self._on_mode_toggled)
         self.btn_toggle_mode.setStyleSheet(
@@ -606,8 +606,7 @@ class FrameTimeline(QWidget):
             track.solo_changed.connect(self._on_track_solo_changed)
             layout.addWidget(track)
             self.tracks.append(track)
-            # Start in condensed mode
-            track.rebuild_cells(True)
+            # Starts in expanded mode by default (cells already built in __init__)
 
     def _on_mode_toggled(self, checked: bool) -> None:
         """Handle mode toggle button - switch between condensed and expanded."""
