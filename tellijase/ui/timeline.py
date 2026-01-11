@@ -37,7 +37,7 @@ class FrameCell(QWidget):
         self.is_filled = False
         self.frame_data = None
 
-        self.setFixedSize(120, 95)  # Larger to fit widgets (added duration row)
+        self.setFixedSize(100, 95)  # Reduced width from 120 to 100
         self.setFocusPolicy(Qt.StrongFocus)
 
         # Main layout
@@ -45,16 +45,21 @@ class FrameCell(QWidget):
         layout.setSpacing(1)
         layout.setContentsMargins(2, 2, 2, 2)
 
-        # Row 1: [Frequency] Hz
+        # Row 1: [Frequency/Period] Hz/label
         self.freq_spin = QSpinBox()
-        self.freq_spin.setRange(27, 2000)
-        self.freq_spin.setValue(440)
+        if track_index == 3:  # Noise channel - use period
+            self.freq_spin.setRange(0, 31)
+            self.freq_spin.setValue(1)
+            freq_label = QLabel("Per")
+        else:  # Tone channels (A, B, C) or Envelope
+            self.freq_spin.setRange(27, 2000)
+            self.freq_spin.setValue(440)
+            freq_label = QLabel("Hz")
         self.freq_spin.setFixedWidth(55)
         self.freq_spin.valueChanged.connect(self._on_data_changed)
-        hz_label = QLabel("Hz")
-        hz_label.setStyleSheet("color: #ccc; font-size: 8px;")
+        freq_label.setStyleSheet("color: #ccc; font-size: 8px;")
         layout.addWidget(self.freq_spin, 0, 0, 1, 2)  # Span 2 columns
-        layout.addWidget(hz_label, 0, 2)
+        layout.addWidget(freq_label, 0, 2)
 
         # Row 2: V [Volume] [Deactivate]
         v_label = QLabel("V")
@@ -74,7 +79,7 @@ class FrameCell(QWidget):
         layout.addWidget(self.vol_spin, 1, 1)
         layout.addWidget(self.btn_deactivate, 1, 2)
 
-        # Row 3: [Tone] [Noise]
+        # Row 3: [Tone] [Noise] - only for tone channels (A, B, C)
         self.btn_tone = QPushButton("T")
         self.btn_tone.setCheckable(True)
         self.btn_tone.setChecked(True)
@@ -87,8 +92,14 @@ class FrameCell(QWidget):
         self.btn_noise.setFixedSize(30, 18)
         self.btn_noise.toggled.connect(self._on_noise_toggled)
 
-        layout.addWidget(self.btn_tone, 2, 0, 1, 2)  # Span 2 columns
-        layout.addWidget(self.btn_noise, 2, 2)
+        # Only show Tone/Noise buttons for tone channels (A, B, C)
+        if track_index < 3:
+            layout.addWidget(self.btn_tone, 2, 0, 1, 2)  # Span 2 columns
+            layout.addWidget(self.btn_noise, 2, 2)
+        else:
+            # Hide buttons for Noise and Envelope tracks
+            self.btn_tone.setVisible(False)
+            self.btn_noise.setVisible(False)
 
         # Row 4: Dur [duration]
         dur_label = QLabel("Dur")
@@ -153,13 +164,21 @@ class FrameCell(QWidget):
     def _emit_current_data(self) -> None:
         """Collect and emit current frame data."""
         data = {
-            "frequency": self.freq_spin.value() if self.track_index < 3 else None,
             "volume": self.vol_spin.value(),
-            "tone_enabled": self.btn_tone.isChecked() if self.track_index < 3 else None,
-            "noise_enabled": self.btn_noise.isChecked() if self.track_index < 3 else None,
             "deactivated": self.btn_deactivate.isChecked(),
-            "duration": self.dur_spin.value(),  # Get from spinbox
+            "duration": self.dur_spin.value(),
         }
+
+        # Track-specific data
+        if self.track_index < 3:  # Tone channels (A, B, C)
+            data["frequency"] = self.freq_spin.value()
+            data["tone_enabled"] = self.btn_tone.isChecked()
+            data["noise_enabled"] = self.btn_noise.isChecked()
+        elif self.track_index == 3:  # Noise channel
+            data["period"] = self.freq_spin.value()  # Use period instead of frequency
+        elif self.track_index == 4:  # Envelope channel
+            data["frequency"] = self.freq_spin.value()  # For now, placeholder
+
         self.data_changed.emit(self.track_index, self.frame_number, data)
 
     def set_highlighted(self, highlighted: bool) -> None:
@@ -212,8 +231,14 @@ class FrameCell(QWidget):
             self.btn_deactivate.setChecked(False)
         else:
             # Load data from dict
-            if data.get("frequency") is not None:
-                self.freq_spin.setValue(int(data["frequency"]))
+            # Handle frequency or period based on track type
+            if self.track_index == 3:  # Noise channel uses period
+                if data.get("period") is not None:
+                    self.freq_spin.setValue(int(data["period"]))
+            else:  # Tone channels and envelope use frequency
+                if data.get("frequency") is not None:
+                    self.freq_spin.setValue(int(data["frequency"]))
+
             if data.get("volume") is not None:
                 self.vol_spin.setValue(int(data["volume"]))
             if data.get("duration") is not None:
@@ -252,17 +277,31 @@ class FrameCell(QWidget):
         if not filled:
             self.set_data(None)
         else:
-            # Create default data
-            self.set_data(
-                {
+            # Create default data based on track type
+            if self.track_index < 3:  # Tone channels (A, B, C)
+                default_data = {
                     "frequency": 440,
-                    "volume": 0,  # Default to silent
+                    "volume": 0,
                     "tone_enabled": True,
                     "noise_enabled": False,
                     "deactivated": False,
                     "duration": 1,
                 }
-            )
+            elif self.track_index == 3:  # Noise channel
+                default_data = {
+                    "period": 1,  # Default noise period
+                    "volume": 0,
+                    "deactivated": False,
+                    "duration": 1,
+                }
+            else:  # Envelope channel
+                default_data = {
+                    "frequency": 440,  # Placeholder for envelope
+                    "volume": 0,
+                    "deactivated": False,
+                    "duration": 1,
+                }
+            self.set_data(default_data)
 
     def paintEvent(self, event) -> None:
         """Paint cell border based on state (highlighted, selected, continuation)."""
@@ -318,7 +357,7 @@ class TrackTimeline(QGroupBox):
         self,
         track_index: int,
         track_name: str,
-        num_frames: int = 5,  # Small number for initial implementation
+        num_frames: int = 1,  # Start with 1 frame per channel
         parent: QWidget | None = None,
     ) -> None:
         super().__init__(track_name, parent)
@@ -399,6 +438,34 @@ class TrackTimeline(QGroupBox):
             cell.data_changed.connect(self.data_changed)  # Forward data changes
             self.cells_layout.addWidget(cell)
             self.cells.append(cell)
+
+            # Initialize first frame as active with volume 0
+            if frame_num == 0:
+                if self.track_index < 3:  # Tone channels (A, B, C)
+                    default_data = {
+                        "frequency": 440,
+                        "volume": 0,
+                        "tone_enabled": True,
+                        "noise_enabled": False,
+                        "deactivated": False,
+                        "duration": 1,
+                    }
+                elif self.track_index == 3:  # Noise channel
+                    default_data = {
+                        "period": 1,  # Default noise period
+                        "volume": 0,
+                        "deactivated": False,
+                        "duration": 1,
+                    }
+                else:  # Envelope channel (track 4)
+                    default_data = {
+                        "frequency": 440,  # Placeholder
+                        "volume": 0,
+                        "deactivated": False,
+                        "duration": 1,
+                    }
+                cell.set_data(default_data)
+                self.frame_data_store[frame_num] = default_data.copy()
 
     def _build_condensed_cells(self) -> None:
         """Build cells for condensed mode (only cards with data)."""
@@ -539,7 +606,7 @@ class FrameTimeline(QWidget):
 
     def __init__(self, parent: QWidget | None = None) -> None:
         super().__init__(parent)
-        self.num_frames = 5  # Small number for initial implementation
+        self.num_frames = 1  # Start with 1 frame per channel
         self.tracks: list[TrackTimeline] = []
         self.clipboard = []  # Store copied frame data: [(track_idx, frame_num, data), ...]
         self.setFocusPolicy(Qt.StrongFocus)  # Allow keyboard events
@@ -581,7 +648,7 @@ class FrameTimeline(QWidget):
         frame_markers_layout.setContentsMargins(0, 0, 0, 0)
 
         marker_interval = 60  # 1 second intervals
-        cell_width = 120  # Updated to match new FrameCell width
+        cell_width = 100  # Updated to match new FrameCell width (reduced from 120)
         cell_spacing = 4  # Match cells_layout spacing
         for i in range(0, self.num_frames, marker_interval):
             # Show time in seconds
