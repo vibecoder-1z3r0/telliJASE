@@ -334,13 +334,13 @@ class TrackTimeline(QGroupBox):
         # Gray panel styling with increased padding
         self.setStyleSheet(
             "QGroupBox { background-color: #3c3c3c; border: 2px solid #555; "
-            "border-radius: 5px; margin-top: 10px; padding: 15px; font-weight: bold; }"
+            "border-radius: 5px; margin-top: 15px; margin-bottom: 15px; padding: 25px; font-weight: bold; }"
             "QGroupBox::title { subcontrol-origin: margin; subcontrol-position: top left; "
-            "padding: 2px 5px; }"
+            "padding: 5px 8px; }"
         )
 
         main_layout = QVBoxLayout(self)
-        main_layout.setSpacing(8)  # Increased from 4 to 8 for more vertical space
+        main_layout.setSpacing(20)  # Much more vertical space within track
 
         # Timeline row (label + cells)
         timeline_row = QHBoxLayout()
@@ -361,7 +361,7 @@ class TrackTimeline(QGroupBox):
 
         # Controls row (MUTE, SOLO, Add Card buttons)
         controls_row = QHBoxLayout()
-        controls_row.setSpacing(8)
+        controls_row.setSpacing(12)  # More spacing between control buttons
 
         self.btn_mute = QPushButton("MUTE")
         self.btn_mute.setCheckable(True)
@@ -544,8 +544,8 @@ class FrameTimeline(QWidget):
         self.is_condensed = True  # Start in condensed mode by default
 
         layout = QVBoxLayout(self)
-        layout.setSpacing(8)  # Increased from 2 to 8 for more vertical space between tracks
-        layout.setContentsMargins(0, 0, 0, 0)
+        layout.setSpacing(20)  # Much more vertical space between tracks
+        layout.setContentsMargins(10, 10, 10, 10)  # Add margins around entire timeline
 
         # Controls row with mode toggle
         controls_row = QHBoxLayout()
